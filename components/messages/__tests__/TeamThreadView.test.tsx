@@ -77,6 +77,7 @@ beforeEach(() => {
   uploadAttachment.mockReset();
   channelOptions = {};
   channelResult = { connected: null };
+  vi.mocked(markTeamThreadReadAction).mockClear();
 });
 
 import { TeamThreadView } from '../TeamThreadView';
@@ -155,6 +156,75 @@ describe('TeamThreadView — 렌더', () => {
   it('마운트 시 팀 스레드를 읽음 처리한다', () => {
     render(<TeamThreadView rfpId="r1" workspaceId="w1" viewerUserId="u1" viewerAvatarUpdatedAt={null} messages={[]} />);
     expect(markTeamThreadReadAction).toHaveBeenCalledWith({ rfpId: 'r1' });
+  });
+
+  it('열려 있는 동안 동료 메시지가 오면 다시 읽음 처리한다', async () => {
+    render(base({ viewerUserId: 'u-me' }));
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1));
+
+    act(() =>
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'tm-live-read',
+        body: '동료 메시지',
+        authorUserId: 'u-mate',
+        authorName: '이동료',
+        createdAt: '2026-06-10T07:00:00.000Z',
+      }),
+    );
+
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(2));
+  });
+
+  it('탭이 숨겨져 있으면 도착한 메시지로 읽음 처리하지 않는다', async () => {
+    render(base({ viewerUserId: 'u-me' }));
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1));
+
+    const original = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState');
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'hidden',
+    });
+    try {
+      act(() =>
+        channelOptions.onMessage?.({
+          type: 'message',
+          id: 'tm-live-hidden',
+          body: '숨은 탭 동료 메시지',
+          authorUserId: 'u-mate',
+          authorName: '이동료',
+          createdAt: '2026-06-10T07:01:00.000Z',
+        }),
+      );
+      expect(await screen.findByText('숨은 탭 동료 메시지')).toBeInTheDocument();
+      expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1);
+    } finally {
+      if (original) Object.defineProperty(document, 'visibilityState', original);
+      else
+        Object.defineProperty(document, 'visibilityState', {
+          configurable: true,
+          get: () => 'visible',
+        });
+    }
+  });
+
+  it('내 메시지 echo 로는 읽음 처리하지 않는다', async () => {
+    render(base({ viewerUserId: 'u-me' }));
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1));
+
+    act(() =>
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'tm-live-self',
+        body: '내가 쓴 메모',
+        authorUserId: 'u-me',
+        authorName: '나',
+        createdAt: '2026-06-10T07:02:00.000Z',
+      }),
+    );
+
+    expect(await screen.findByText('내가 쓴 메모')).toBeInTheDocument();
+    expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1);
   });
 
   it('컴포저는 좁은 레일에서 placeholder 가 두 줄로 잘리지 않도록 min-w-0 슬롯과 한 줄 placeholder 를 쓴다', () => {

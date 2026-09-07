@@ -234,6 +234,77 @@ describe('ThreadView', () => {
     expect(markConversationReadAction).toHaveBeenCalledTimes(1);
   });
 
+  it('열려 있는 동안 상대 메시지가 오면 다시 읽음 처리한다', async () => {
+    render(base());
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'live-read-1',
+        body: '읽음 갱신 트리거',
+        authorWsId: 'pg-1', // counterparty
+        rfpId: null,
+        createdAt: '2026-05-27T06:00:00.000Z',
+      });
+    });
+
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(2));
+    expect(markConversationReadAction).toHaveBeenLastCalledWith({ conversationId: 'conv-1' });
+  });
+
+  it('탭이 숨겨져 있으면 도착한 메시지로 읽음 처리하지 않는다(거짓 읽음 영수증 방지)', async () => {
+    render(base());
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(1));
+
+    const original = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState');
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'hidden',
+    });
+    try {
+      act(() => {
+        channelOptions.onMessage?.({
+          type: 'message',
+          id: 'live-read-2',
+          body: '숨은 탭 메시지',
+          authorWsId: 'pg-1',
+          rfpId: null,
+          createdAt: '2026-05-27T06:01:00.000Z',
+        });
+      });
+      // 도착 자체는 렌더된다 — 읽음만 미룬다.
+      expect(await screen.findByText('숨은 탭 메시지')).toBeInTheDocument();
+      expect(markConversationReadAction).toHaveBeenCalledTimes(1);
+    } finally {
+      if (original) Object.defineProperty(document, 'visibilityState', original);
+      else
+        Object.defineProperty(document, 'visibilityState', {
+          configurable: true,
+          get: () => 'visible',
+        });
+    }
+  });
+
+  it('내가 보낸 메시지 echo 로는 읽음 처리하지 않는다', async () => {
+    render(base());
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'live-self-1',
+        body: '내 메시지 echo',
+        authorWsId: 'buyer-1', // 내 워크스페이스 → 'self'
+        rfpId: null,
+        createdAt: '2026-05-27T06:02:00.000Z',
+      });
+    });
+
+    expect(await screen.findByText('내 메시지 echo')).toBeInTheDocument();
+    expect(markConversationReadAction).toHaveBeenCalledTimes(1);
+  });
+
   it('상대 읽음 영수증 projection을 Conversation read-state hook에 위임한다', () => {
     render(<ThreadView conversationId="conv-1" counterparty={counterparty} viewer={viewer} messages={messages} />);
 
