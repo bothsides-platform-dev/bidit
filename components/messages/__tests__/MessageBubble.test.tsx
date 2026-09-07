@@ -53,10 +53,4 @@ describe('MessageBubble', () => {
     expect(container.querySelector('.flex-row-reverse')).not.toBeNull();
   });
 
-  // 전송 morph 는 이 data-bubble-key 로 안착한 말풍선을 querySelector 측정한다 —
-  // 속성이 사라지면 morph 타깃을 못 찾는다(조용한 회귀 방지).
-  it('exposes bubbleKey as data-bubble-key on the bubble element', () => {
-    const { container } = render(<MessageBubble {...base} bubbleKey="row-7" />);
-    expect(container.querySelector('[data-bubble-key="row-7"]')).not.toBeNull();
-  });
 });

@@ -167,6 +167,24 @@ describe('TeamThreadView — 렌더', () => {
 });
 
 describe('TeamThreadView — 전송', () => {
+  it('전송 중 말풍선을 morph 오버레이 없이 목록에 직접 표시한다', async () => {
+    const user = userEvent.setup();
+    let resolveSend!: (v: unknown) => void;
+    sendTeamMessageAction.mockReturnValue(new Promise((res) => { resolveSend = res; }));
+    render(base());
+
+    await user.type(screen.getByPlaceholderText('우리 팀에게만 보이는 메모를 남겨보세요…'), '즉시 표시 메모');
+    await user.click(screen.getByRole('button', { name: '보내기' }));
+
+    const bubble = await screen.findByText('즉시 표시 메모');
+    expect(bubble.closest('[data-message-row]')).toHaveAttribute('data-sender', 'self');
+    expect(document.querySelector('[data-morph-bounds]')).toBeNull();
+
+    await act(async () => {
+      resolveSend({ ok: true, messageId: 'tm-new', createdAt: '2026-06-10T01:23:00.000Z' });
+    });
+  });
+
   it('보내기 클릭 시 sendTeamMessageAction({rfpId, body}) 호출 + 낙관적 말풍선 표시 후 확정 승격', async () => {
     const user = userEvent.setup();
     render(base());
@@ -690,21 +708,5 @@ describe('TeamThreadView — 멘션', () => {
     // 본인(ME) 멘션 → 강조 span.
     const el = screen.getByText('@김구매');
     expect(el).toHaveAttribute('data-self-mention', 'true');
-  });
-});
-
-// 팀 채팅도 딜룸 모달 안에 임베드된다(TeamThreadPane). 전송 morph 클론이 최상위 z 로
-// body 에 portal 되므로, 패널 경계를 표시해 클론이 모달 헤더 위로 새지 않게 한다.
-describe('TeamThreadView — 전송 morph', () => {
-  it('채팅 패널에 morph 경계를 달아 클론이 목록·입력창 밖으로 새지 않게 한다', () => {
-    render(base());
-
-    const bounds = document.querySelector('[data-morph-bounds]');
-    expect(bounds).not.toBeNull();
-    // 경계는 morph 의 두 끝점(도착=말풍선 목록, 출발=입력창)을 모두 품어야 한다.
-    expect(bounds).toContainElement(document.querySelector('[data-message-list]'));
-    expect(bounds).toContainElement(
-      screen.getByPlaceholderText('우리 팀에게만 보이는 메모를 남겨보세요…'),
-    );
   });
 });
