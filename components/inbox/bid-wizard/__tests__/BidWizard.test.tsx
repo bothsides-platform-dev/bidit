@@ -47,6 +47,15 @@ import { BidWizard } from '../BidWizard';
 import { toast } from '@/lib/toast';
 import type { QuoteTemplateOption } from '@/lib/types/bid';
 import { EMPTY_BID_DRAFT, type BidDraft } from '../../useBidDraft';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
+// 구매사 신원 fixture — 아바타를 그리는 화면은 이름 문자열이 아니라 이 객체를 받는다.
+const buyerOf = (name: string): WorkspaceDisplay => ({
+  id: 'ws-buyer',
+  name,
+  type: 'buyer',
+  logoUpdatedAt: null,
+});
+
 
 const rfp = {
   id: 'rfp-uuid',
@@ -88,14 +97,14 @@ afterEach(cleanup);
 
 describe('BidWizard', () => {
   it('1단계 정산조건이 먼저 보인다 (수수료 입력칸은 2단계로 이동해야 보임)', () => {
-    render(<BidWizard rfp={rfp} buyerName="토스" />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} />);
     expect(screen.getByText('정산 주기')).toBeInTheDocument();
     expect(screen.queryByText(/카드 수수료/)).not.toBeInTheDocument();
   });
 
   it('단계 이동 후 입력 → 발송 → submitBidAction 호출 + 인플레이스 갱신(refresh)', async () => {
     const user = userEvent.setup();
-    render(<BidWizard rfp={rfp} buyerName="토스" />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} />);
 
     // step1: 정산주기
     await user.clear(screen.getByPlaceholderText('1'));
@@ -130,7 +139,7 @@ describe('BidWizard', () => {
 
 describe('BidWizard 드래프트 자동 복원(1단계)', () => {
   it('드래프트 없으면 복원 토스트도 배너도 없다', () => {
-    render(<BidWizard rfp={rfp} buyerName="토스" />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} />);
     expect(toast).not.toHaveBeenCalled();
     expect(screen.queryByRole('button', { name: '불러오기' })).toBeNull();
     expect(screen.queryByRole('button', { name: '무시' })).toBeNull();
@@ -139,7 +148,7 @@ describe('BidWizard 드래프트 자동 복원(1단계)', () => {
   it('의미 있는 드래프트는 묻지 않고 자동 복원 + 토스트 1회', async () => {
     const user = userEvent.setup();
     localStorage.setItem('bid-draft:rfp-uuid', JSON.stringify(draftV3({ 'card:general': '0.40' }, '복원됨')));
-    render(<BidWizard rfp={rfp} buyerName="토스" />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} />);
 
     // 묻는 배너/버튼 없음
     expect(screen.queryByRole('button', { name: '불러오기' })).toBeNull();
@@ -158,14 +167,14 @@ describe('BidWizard 드래프트 자동 복원(1단계)', () => {
 
   it('빈(pristine) 드래프트는 복원/토스트하지 않는다', () => {
     localStorage.setItem('bid-draft:rfp-uuid', JSON.stringify(draftV3({})));
-    render(<BidWizard rfp={rfp} buyerName="토스" />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} />);
     expect(toast).not.toHaveBeenCalled();
   });
 
   it('초기화 → 처음부터 다시 → 폼이 비워진다', async () => {
     const user = userEvent.setup();
     localStorage.setItem('bid-draft:rfp-uuid', JSON.stringify(draftV3({ 'card:general': '0.40' })));
-    render(<BidWizard rfp={rfp} buyerName="토스" />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} />);
 
     await user.click(screen.getByRole('button', { name: '초기화' }));
     await user.click(screen.getByRole('button', { name: '처음부터 다시' }));
@@ -178,7 +187,7 @@ describe('BidWizard 드래프트 자동 복원(1단계)', () => {
 describe('BidWizard 413 업로드 오류(3단계)', () => {
   it('413 응답 시 파일 크기 오류 메시지', async () => {
     const user = userEvent.setup();
-    render(<BidWizard rfp={rfp} buyerName="토스" />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} />);
     // step1 → step2 → step3
     await user.click(screen.getByRole('button', { name: '수수료' }));
     await user.click(screen.getByRole('button', { name: '견적서' }));
@@ -204,7 +213,7 @@ describe('BidWizard 템플릿 적용(1단계)', () => {
       signupFee: 0,
       paymentFees: { card: 0.005 },
     };
-    render(<BidWizard rfp={rfp} buyerName="토스" templates={[tmpl]} />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} templates={[tmpl]} />);
     await user.selectOptions(screen.getByRole('option', { name: '표준' }).closest('select')!, 't1');
     expect((screen.getByPlaceholderText('1') as HTMLInputElement).value).toBe('2');
     // 카드는 구간 수단 — 구버전 단일요율(0.005) → 전 구간 동일값으로 전개
@@ -221,7 +230,7 @@ describe('BidWizard 템플릿 적용(1단계)', () => {
       signupFee: 0,
       paymentFees: { card: 0.005 },
     };
-    render(<BidWizard rfp={rfp} buyerName="토스" templates={[tmpl]} />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} templates={[tmpl]} />);
 
     await user.selectOptions(
       screen.getByRole('option', { name: '표준' }).closest('select')!,
@@ -233,7 +242,7 @@ describe('BidWizard 템플릿 적용(1단계)', () => {
   });
 
   it('저장된 템플릿이 0개면 빈 상태 안내와 관리 링크를 보인다', () => {
-    render(<BidWizard rfp={rfp} buyerName="토스" templates={[]} />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} templates={[]} />);
     expect(screen.getByText(/저장된 견적 템플릿이 없어요/)).toBeInTheDocument();
     const link = screen.getByRole('link', { name: '템플릿 관리' });
     expect(link).toHaveAttribute('href', '/quote-templates');
@@ -246,7 +255,7 @@ describe('BidWizard 템플릿 적용(1단계)', () => {
       signupFee: 0,
       paymentFees: { card: 0.005 },
     };
-    render(<BidWizard rfp={rfp} buyerName="토스" templates={[tmpl]} />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} templates={[tmpl]} />);
     await user.selectOptions(
       screen.getByRole('option', { name: '표준' }).closest('select')!,
       't1',
@@ -258,7 +267,7 @@ describe('BidWizard 템플릿 적용(1단계)', () => {
 describe('BidWizard 제출 — paymentFees / customFees 분리', () => {
   it('enum 요율은 paymentFees, 커스텀 요율은 customFees로 전송', async () => {
     const user = userEvent.setup();
-    render(<BidWizard rfp={rfpWithCustom} buyerName="토스" />);
+    render(<BidWizard rfp={rfpWithCustom} buyer={buyerOf('토스')} />);
     await user.type(screen.getByPlaceholderText('50,000,000'), '50000000');
     await user.click(screen.getByRole('button', { name: '수수료' }));
     // 카드는 구간 수단 → general 셀 입력
@@ -282,7 +291,7 @@ describe('BidWizard 제출 — paymentFees / customFees 분리', () => {
 describe('BidWizard confirm 닫기', () => {
   it('확인 다이얼로그에서 닫기를 누르면 제출 안 함', async () => {
     const user = userEvent.setup();
-    render(<BidWizard rfp={rfp} buyerName="토스" />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} />);
     await user.type(screen.getByPlaceholderText('50,000,000'), '50000000');
     await user.click(screen.getByRole('button', { name: '수수료' }));
     await user.type(screen.getByTestId('fee-cell-card-general'), '1.5');
@@ -304,7 +313,7 @@ describe('BidWizard 구간 수수료 조립', () => {
       requiredPaymentMethods: ['card', 'virtual_account'] as PaymentMethod[],
       customPaymentMethods: [],
     } as never;
-    render(<BidWizard rfp={rfpTiered} buyerName="토스" />);
+    render(<BidWizard rfp={rfpTiered} buyer={buyerOf('토스')} />);
 
     // step1: 정산주기
     await user.clear(screen.getByPlaceholderText('1'));
@@ -338,13 +347,13 @@ describe('BidWizard 구간 수수료 조립', () => {
 
 describe('BidWizard 네비게이션 푸터', () => {
   it('wizard-nav-footer가 항상 렌더된다', () => {
-    render(<BidWizard rfp={rfp} buyerName="토스" />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} />);
     expect(screen.getByTestId('wizard-nav-footer')).toBeInTheDocument();
   });
 
   it('4단계: 수수료 미입력 시 견적 보내기는 비활성이 아니라, 누르면 수수료 단계로 이동·안내', async () => {
     const user = userEvent.setup();
-    render(<BidWizard rfp={rfp} buyerName="토스" />); // cycleNum 기본 '1'(유효) → 첫 미충족 = 수수료(2단계)
+    render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} />); // cycleNum 기본 '1'(유효) → 첫 미충족 = 수수료(2단계)
     await user.type(screen.getByPlaceholderText('50,000,000'), '50000000');
     await user.click(screen.getByRole('button', { name: '수수료' }));
     await user.click(screen.getByRole('button', { name: '견적서' }));
@@ -371,7 +380,7 @@ describe('BidWizard 가입비(signupFee) 상태 배선', () => {
   it('initialDraft로 signupFee가 시드되면 제출 페이로드에 파싱된 숫자로 포함된다', async () => {
     const user = userEvent.setup();
     const seeded: BidDraft = { ...EMPTY_BID_DRAFT, settleLimit: '50000000', signupFee: '300000' };
-    render(<BidWizard rfp={rfp} buyerName="토스" initialDraft={seeded} />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} initialDraft={seeded} />);
 
     await user.click(screen.getByRole('button', { name: '수수료' }));
     await user.type(screen.getByTestId('fee-cell-card-general'), '1.5');
@@ -395,7 +404,7 @@ describe('BidWizard 가입비(signupFee) 상태 배선', () => {
       signupFee: 120000,
       paymentFees: { card: 0.005 },
     };
-    render(<BidWizard rfp={rfp} buyerName="토스" templates={[tmpl]} />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} templates={[tmpl]} />);
     await user.selectOptions(screen.getByRole('option', { name: '가입비 템플릿' }).closest('select')!, 't2');
 
     await user.click(screen.getByRole('button', { name: '수수료' }));
@@ -411,7 +420,7 @@ describe('BidWizard 가입비(signupFee) 상태 배선', () => {
   it('템플릿 저장 시 saveQuoteTemplateAction 페이로드에 signupFee가 포함된다', async () => {
     const user = userEvent.setup();
     const seeded: BidDraft = { ...EMPTY_BID_DRAFT, settleLimit: '50000000', signupFee: '75000' };
-    render(<BidWizard rfp={rfp} buyerName="토스" initialDraft={seeded} />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} initialDraft={seeded} />);
 
     await user.click(screen.getByRole('button', { name: '수수료' }));
     await user.type(screen.getByTestId('fee-cell-card-general'), '1.5');
@@ -433,7 +442,7 @@ describe('BidWizard 계약서 템플릿 피커(4단계)', () => {
     render(
       <BidWizard
         rfp={rfp}
-        buyerName="토스"
+        buyer={buyerOf('토스')}
         signingTemplates={[
           { id: 'st1', kind: 'pdf', name: '표준 계약서' },
         ]}
@@ -472,7 +481,7 @@ describe('BidWizard 계약서 템플릿 피커(4단계)', () => {
     render(
       <BidWizard
         rfp={rfp}
-        buyerName="토스"
+        buyer={buyerOf('토스')}
         signingTemplates={[
           { id: 'st1', kind: 'pdf', name: '표준 계약서' },
         ]}
@@ -503,7 +512,7 @@ describe('BidWizard 계약서 템플릿 피커(4단계)', () => {
       'bid-draft:rfp-uuid',
       JSON.stringify({ ...draftV3({ 'card:general': '0.40' }), signingTemplateId: 'st1' }),
     );
-    render(<BidWizard rfp={rfp} buyerName="토스" />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} />);
 
     expect(toast).not.toHaveBeenCalledWith(
       expect.stringContaining('템플릿이 삭제'),
@@ -534,7 +543,7 @@ describe('BidWizard 계약서 템플릿 피커(4단계)', () => {
     const stored = { ...draftV3({ 'card:general': '0.40' }), signingTemplateId: 'st1' };
     localStorage.setItem('bid-draft:rfp-uuid', JSON.stringify(stored));
 
-    const view = render(<BidWizard rfp={rfp} buyerName="토스" />);
+    const view = render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} />);
     view.unmount(); // 언마운트 flush 경로를 그대로 탄다
 
     expect(JSON.parse(localStorage.getItem('bid-draft:rfp-uuid') ?? '{}')).toMatchObject({
@@ -550,7 +559,7 @@ describe('BidWizard 계약서 템플릿 피커(4단계)', () => {
     render(
       <BidWizard
         rfp={rfp}
-        buyerName="토스"
+        buyer={buyerOf('토스')}
         signingTemplates={[
           { id: 'st1', kind: 'pdf', name: '표준 계약서' },
         ]}
@@ -567,7 +576,7 @@ describe('BidWizard 계약서 템플릿 피커(4단계)', () => {
   // 제출 페이로드에는 여전히 signingTemplateId 가 실리지 않는다.
   it('signingTemplates가 비어 있으면 안내 힌트+템플릿 관리 링크를 보이고 페이로드에는 없다', async () => {
     const user = userEvent.setup();
-    render(<BidWizard rfp={rfp} buyerName="토스" signingTemplates={[]} />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} signingTemplates={[]} />);
 
     // step1: 정산조건
     await user.type(screen.getByPlaceholderText('50,000,000'), '50000000');
@@ -598,7 +607,7 @@ describe('BidWizard 계약서 템플릿 피커(4단계)', () => {
   // []("템플릿 0개인 PG")와 시맨틱이 다르다.
   it('signingTemplates가 undefined 면 피커도 안내 힌트도 없다', async () => {
     const user = userEvent.setup();
-    render(<BidWizard rfp={rfp} buyerName="토스" />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} />);
 
     await user.type(screen.getByPlaceholderText('50,000,000'), '50000000');
     await user.click(screen.getByRole('button', { name: '수수료' }));
@@ -615,7 +624,7 @@ describe('BidWizard 서버 거부 매핑', () => {
   it('INVALID_ATTACHMENT 거부 시 견적서(3) 단계로 이동한다', async () => {
     const user = userEvent.setup();
     submitBidMock.mockResolvedValueOnce({ ok: false as const, error: 'INVALID_ATTACHMENT' });
-    render(<BidWizard rfp={rfp} buyerName="토스" />); // cycleNum 기본 '1'
+    render(<BidWizard rfp={rfp} buyer={buyerOf('토스')} />); // cycleNum 기본 '1'
     await user.type(screen.getByPlaceholderText('50,000,000'), '50000000');
 
     await user.click(screen.getByRole('button', { name: '수수료' }));

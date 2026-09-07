@@ -8,6 +8,7 @@ import { Chip } from '@/components/primitives/Chip';
 import type { ChipColor } from '@/components/primitives/Chip';
 import { WorkspaceAvatar } from '@/components/primitives/WorkspaceAvatar';
 import { CounterpartyProfileCard } from '@/components/messages/CounterpartyProfileCard';
+import { toCounterparty } from '@/components/messages/types';
 import {
   addPgWorkspacesToRfpAction,
   removeDraftPgWorkspaceAction,
@@ -18,11 +19,12 @@ import type { PgWorkspace } from '@/lib/hooks/useLazyPgWorkspaces';
 import { toast } from '@/lib/toast';
 import { Divider } from '@/components/primitives/Divider';
 import type { InvitationStatus } from '@/lib/types/invitation';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
 import { X } from 'lucide-react';
 
 type InvitationView = {
-  wsId: string;
-  wsName: string;
+  /** 워크스페이스 신원 한 덩어리 — 이름만 받으면 로고가 화면까지 오지 못한다. */
+  ws: WorkspaceDisplay;
   status: InvitationStatus;
 };
 
@@ -69,7 +71,7 @@ export function RfpInviteManager({
   }, [canEdit, loadPg]);
 
   const draftCount = invitations.filter((i) => i.status === 'draft').length;
-  const invitedIds = new Set(invitations.map((i) => i.wsId));
+  const invitedIds = new Set(invitations.map((i) => i.ws.id));
   const availablePgs = pgList.filter((pg) => !invitedIds.has(pg.id));
 
   const handleSelect = (ws: PgWorkspace) => {
@@ -99,7 +101,7 @@ export function RfpInviteManager({
     setPendingKind('remove');
     startTransition(async () => {
       try {
-        const r = await removeDraftPgWorkspaceAction({ rfpId, workspaceId: inv.wsId });
+        const r = await removeDraftPgWorkspaceAction({ rfpId, workspaceId: inv.ws.id });
         if (!r.ok) {
           toast(`선택을 취소하지 못했어요 — ${r.error}`, { type: 'error' });
           return;
@@ -149,7 +151,7 @@ export function RfpInviteManager({
           <div className="divide-y divide-[var(--md-sys-color-outline-variant)] border-t border-[var(--md-sys-color-outline-variant)]">
             {invitations.map((inv, i) => (
               <div
-                key={inv.wsId}
+                key={inv.ws.id}
                 className="py-2 flex items-center justify-between gap-3"
               >
                 <div className="flex items-center gap-3 min-w-0">
@@ -158,7 +160,7 @@ export function RfpInviteManager({
                   </span>
                   <CounterpartyProfileCard
                     variant="profile"
-                    counterparty={{ name: inv.wsName, type: 'pg', workspaceId: inv.wsId }}
+                    counterparty={toCounterparty(inv.ws)}
                   />
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
@@ -166,7 +168,7 @@ export function RfpInviteManager({
                   {canEdit && inv.status === 'draft' && (
                     <button
                       type="button"
-                      aria-label={`${inv.wsName} 선택 취소`}
+                      aria-label={`${inv.ws.name} 선택 취소`}
                       disabled={pending}
                       onClick={() => handleRemoveDraft(inv)}
                       className="grid size-6 place-items-center rounded-[var(--md-sys-shape-extra-small)] text-[var(--md-sys-color-on-surface-variant)] hover:bg-[var(--md-sys-color-surface-container-high)] hover:text-[var(--md-sys-color-error)] disabled:opacity-50"

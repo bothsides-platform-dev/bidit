@@ -53,6 +53,15 @@ vi.mock('motion/react', () => ({
 }));
 
 import { BidWizard } from '../BidWizard';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
+// 구매사 신원 fixture — 아바타를 그리는 화면은 이름 문자열이 아니라 이 객체를 받는다.
+const buyerOf = (name: string): WorkspaceDisplay => ({
+  id: 'ws-buyer',
+  name,
+  type: 'buyer',
+  logoUpdatedAt: null,
+});
+
 
 // 가상 샘플 온보딩 fixture rfp — onSampleSubmit 이 제공되면 서버 제출 없이 콜백만 호출한다.
 const rfp = {
@@ -85,7 +94,7 @@ describe('BidWizard onSampleSubmit (가상 샘플 온보딩 — PG 투어)', () 
   it('onSampleSubmit이 있으면 서버 제출 액션·샘플 시뮬레이션 대신 콜백만 호출한다', async () => {
     const onSampleSubmit = vi.fn();
     const user = userEvent.setup();
-    render(<BidWizard rfp={rfp} buyerName="샘플 쇼핑몰" onSampleSubmit={onSampleSubmit} />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('샘플 쇼핑몰')} onSampleSubmit={onSampleSubmit} />);
     await driveToSubmit(user);
 
     await waitFor(() => expect(onSampleSubmit).toHaveBeenCalledTimes(1));
@@ -105,7 +114,7 @@ describe('BidWizard onSampleSubmit (가상 샘플 온보딩 — PG 투어)', () 
     render(
       <BidWizard
         rfp={seededRfp}
-        buyerName="튜토리얼 쇼핑몰"
+        buyer={buyerOf('튜토리얼 쇼핑몰')}
         initialDraft={tutorialBidDraftSeed}
         onSampleSubmit={onSampleSubmit}
       />,
@@ -125,7 +134,7 @@ describe('BidWizard onSampleSubmit (가상 샘플 온보딩 — PG 투어)', () 
   it('샘플 제출 시 로컬 draft를 정리한다 (bid-draft:<rfpId> 잔존 방지)', async () => {
     const onSampleSubmit = vi.fn();
     const user = userEvent.setup();
-    render(<BidWizard rfp={rfp} buyerName="샘플 쇼핑몰" onSampleSubmit={onSampleSubmit} />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('샘플 쇼핑몰')} onSampleSubmit={onSampleSubmit} />);
     await driveToSubmit(user);
 
     await waitFor(() => expect(onSampleSubmit).toHaveBeenCalledTimes(1));

@@ -5,17 +5,19 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/primitives/Button';
 import { Label } from '@/components/primitives/Label';
 import { CounterpartyProfileCard } from '@/components/messages/CounterpartyProfileCard';
+import { toCounterparty } from '@/components/messages/types';
 import {
   acceptPgRequestAction,
   rejectPgRequestAction,
 } from '@/lib/server/actions/rfp';
 import { toast } from '@/lib/toast';
 import { Divider } from '@/components/primitives/Divider';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
 
 export type PendingRequestView = {
   id: string;
-  pgWsId: string;
-  pgWsName: string;
+  /** 요청을 보낸 PG 워크스페이스 신원 — 이름만 받으면 로고가 화면까지 오지 못한다. */
+  pgWs: WorkspaceDisplay;
   message: string;
   createdAt: string;
 };
@@ -68,7 +70,7 @@ export function RfpPendingRequests({
             <div className="flex min-w-0 flex-col gap-0.5">
               <CounterpartyProfileCard
                 variant="profile"
-                counterparty={{ name: r.pgWsName, type: 'pg', workspaceId: r.pgWsId }}
+                counterparty={toCounterparty(r.pgWs)}
               />
               <p className="whitespace-pre-wrap text-[13px] text-[var(--md-sys-color-on-surface-variant)]">
                 {r.message}

@@ -2,6 +2,20 @@ import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { FeeComparisonRows } from '../FeeComparisonRows';
 import type { Bid } from '@/lib/types/bid';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
+// pgWsId → 표시 신원. 이름 맵과 로고 맵을 나누지 않는다 — 둘 중 하나만 배선되는 사고가
+// 딜룸 로고 누락의 원인이었다.
+const wsById = (
+  names: Record<string, string>,
+  logos: Record<string, string | null> = {},
+): Record<string, WorkspaceDisplay> =>
+  Object.fromEntries(
+    Object.entries(names).map(([id, name]) => [
+      id,
+      { id, name, type: 'pg' as const, logoUpdatedAt: logos[id] ?? null },
+    ]),
+  );
+
 
 const baseBid: Bid = {
   id: 'b1',
@@ -64,7 +78,7 @@ describe('FeeComparisonRows flash', () => {
         sortedBids={[baseBid]}
         active={baseBid}
         tier="sole"
-        pgWsNameMap={{ pg1: 'PG사' }}
+        pgWsById={wsById({ pg1: 'PG사' })}
         onSelect={vi.fn()}
         flash={true}
       />,
@@ -80,7 +94,7 @@ describe('FeeComparisonRows flash', () => {
         sortedBids={[baseBid]}
         active={baseBid}
         tier="sole"
-        pgWsNameMap={{ pg1: 'PG사' }}
+        pgWsById={wsById({ pg1: 'PG사' })}
         onSelect={vi.fn()}
         flash={false}
       />,
@@ -96,7 +110,7 @@ describe('FeeComparisonRows flash', () => {
         sortedBids={[flatFeeBid]}
         active={flatFeeBid}
         tier="sole"
-        pgWsNameMap={{ pg1: 'PG사' }}
+        pgWsById={wsById({ pg1: 'PG사' })}
         onSelect={vi.fn()}
       />,
     );
@@ -110,7 +124,7 @@ describe('FeeComparisonRows flash', () => {
         sortedBids={[baseBid]}
         active={baseBid}
         tier="sole"
-        pgWsNameMap={{ pg1: 'PG사' }}
+        pgWsById={wsById({ pg1: 'PG사' })}
         onSelect={vi.fn()}
         flash={true}
       />,

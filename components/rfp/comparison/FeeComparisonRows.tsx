@@ -6,6 +6,7 @@
 import { memo } from 'react';
 import { cn } from '@/lib/utils';
 import { MetricComparePopover, type CompareRow } from './MetricComparePopover';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
 import { rankByMetric } from '@/lib/utils/bid-compare';
 import { formatPct, formatKRW } from '@/lib/utils/format';
 import type { Bid, MerchantTier } from '@/lib/types/bid';
@@ -16,7 +17,7 @@ function FeeComparisonRowsImpl({
   sortedBids,
   active,
   tier,
-  pgWsNameMap,
+  pgWsById,
   onSelect,
   flash,
 }: {
@@ -24,7 +25,7 @@ function FeeComparisonRowsImpl({
   sortedBids: Bid[];
   active: Bid;
   tier: MerchantTier;
-  pgWsNameMap: Record<string, string>;
+  pgWsById: Record<string, WorkspaceDisplay>;
   onSelect: (pgWsId: string) => void;
   flash?: boolean;
 }) {
@@ -52,7 +53,7 @@ function FeeComparisonRowsImpl({
               label={row.label}
               rows={rows}
               activeBidId={active.id}
-              pgWsNameMap={pgWsNameMap}
+              pgWsById={pgWsById}
               baselineText={row.baseline}
               onSelect={onSelect}
             >

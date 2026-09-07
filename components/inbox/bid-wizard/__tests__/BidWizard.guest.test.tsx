@@ -53,6 +53,15 @@ vi.mock('motion/react', () => ({
 }));
 
 import { BidWizard } from '../BidWizard';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
+// 구매사 신원 fixture — 아바타를 그리는 화면은 이름 문자열이 아니라 이 객체를 받는다.
+const buyerOf = (name: string): WorkspaceDisplay => ({
+  id: 'ws-buyer',
+  name,
+  type: 'buyer',
+  logoUpdatedAt: null,
+});
+
 
 const rfp = {
   id: 'rfp-uuid',
@@ -83,7 +92,7 @@ describe('BidWizard 게스트(랜딩 데모) 제출', () => {
   it('onGuestSubmit 이 있으면 서버 제출 액션 대신 콜백을 호출한다', async () => {
     const onGuest = vi.fn();
     const user = userEvent.setup();
-    render(<BidWizard rfp={rfp} buyerName="데모 쇼핑몰" onGuestSubmit={onGuest} />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('데모 쇼핑몰')} onGuestSubmit={onGuest} />);
     await driveToSubmit(user);
 
     await waitFor(() => expect(onGuest).toHaveBeenCalledTimes(1));

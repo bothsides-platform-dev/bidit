@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 
-import { bids, bidNotes, columns, rfpAllowedPg, rfpInvitations, rfpPgRequests, rfpRequoteRequests, rfps, users } from '@/lib/db/schema';
+import { bids, bidNotes, columns, rfpAllowedPg, rfpInvitations, rfpPgRequests, rfpRequoteRequests, rfps, users, workspaces } from '@/lib/db/schema';
 import { createPgliteDb } from '@/lib/db/client-pglite';
 import {
   __resetForTest,
@@ -269,7 +269,7 @@ describe('loadBuyerRfpDetail', () => {
     expect(res!.priorBidByPg[ctx.tossId]!.round).toBe(1);
   });
 
-  it('pgWsLogoUpdatedAtMap — invited PG 의 wsId 를 키로, logoUpdatedAt(null 포함)을 값으로 반환', async () => {
+  it('pgWsById — invited PG 의 wsId 를 키로, 신원(로고 버전 null 포함)을 값으로 반환', async () => {
     const rfpId = await ctx.seedRfp('P-2606-LOGO1');
     const invToss = await ctx.seedInvitation(rfpId, ctx.tossId);
     await ctx.seedBid(rfpId, ctx.tossId, invToss, 'submitted');
@@ -282,10 +282,52 @@ describe('loadBuyerRfpDetail', () => {
     });
 
     expect(res).not.toBeNull();
-    // 반환 객체에 pgWsLogoUpdatedAtMap 필드가 존재해야 한다.
-    expect(res).toHaveProperty('pgWsLogoUpdatedAtMap');
+    // 반환 객체에 pgWsById 필드가 존재해야 한다.
+    expect(res).toHaveProperty('pgWsById');
+    expect(res!.pgWsById[ctx.tossId]?.name).toBe('toss.im');
     // 시드된 PG 워크스페이스에 로고가 없으므로 null.
-    expect(res!.pgWsLogoUpdatedAtMap[ctx.tossId]).toBeNull();
+    expect(res!.pgWsById[ctx.tossId]?.logoUpdatedAt).toBeNull();
+  });
+
+  // 워크스페이스 신원(이름 + 로고 버전)은 항상 한 덩어리로 옮긴다 — 이름만 담고 로고를
+  // 흘리는 것이 딜룸 PG 관리 탭에서 로고가 사라진 원인이었다.
+  it('inviteList 항목이 워크스페이스 신원(로고 버전 포함)을 함께 담는다', async () => {
+    const logoAt = new Date('2026-01-02T03:04:05.000Z');
+    await ctx.db.update(workspaces).set({ logoUpdatedAt: logoAt }).where(eq(workspaces.id, ctx.tossId));
+    const rfpId = await ctx.seedRfp('P-2606-LOGO2');
+    await ctx.seedInvitation(rfpId, ctx.tossId);
+    // inviteList 의 소스는 allowlist(rfp_allowed_pg)다 — invitation row 만으로는 뜨지 않는다.
+    await ctx.db.insert(rfpAllowedPg).values({ rfpId, pgWsId: ctx.tossId });
+
+    const res = await loadBuyerRfpDetail({
+      code: 'P-2606-LOGO2',
+      workspaceId: ctx.buyerWsId,
+      userId: ctx.buyerId,
+      userName: ctx.buyerName,
+    });
+
+    const entry = res!.inviteList.find((i) => i.ws.id === ctx.tossId)!;
+    expect(entry.ws.name).toBe('toss.im');
+    expect(entry.ws.logoUpdatedAt).toBe(logoAt.toISOString());
+  });
+
+  it('pendingRequests 항목이 워크스페이스 신원(로고 버전 포함)을 함께 담는다', async () => {
+    const logoAt = new Date('2026-02-03T04:05:06.000Z');
+    await ctx.db.update(workspaces).set({ logoUpdatedAt: logoAt }).where(eq(workspaces.id, ctx.tossId));
+    const rfpId = await ctx.seedRfp('P-2606-LOGO3');
+    await ctx.seedPgRequest(rfpId, ctx.tossId, '제안 드리고 싶어요', 'pending');
+
+    const res = await loadBuyerRfpDetail({
+      code: 'P-2606-LOGO3',
+      workspaceId: ctx.buyerWsId,
+      userId: ctx.buyerId,
+      userName: ctx.buyerName,
+    });
+
+    const req = res!.pendingRequests[0]!;
+    expect(req.pgWs.id).toBe(ctx.tossId);
+    expect(req.pgWs.name).toBe('toss.im');
+    expect(req.pgWs.logoUpdatedAt).toBe(logoAt.toISOString());
   });
 
   it('pendingRequests에 pending 콜드 피치만 PG명+메시지와 함께 반환', async () => {
@@ -303,8 +345,8 @@ describe('loadBuyerRfpDetail', () => {
     expect(res).not.toBeNull();
     expect(res!.pendingRequests).toHaveLength(1);
     const req = res!.pendingRequests[0];
-    expect(req.pgWsId).toBe(ctx.tossId);
-    expect(req.pgWsName).toBe('toss.im');
+    expect(req.pgWs.id).toBe(ctx.tossId);
+    expect(req.pgWs.name).toBe('toss.im');
     expect(req.message).toBe('제안 드리고 싶어요');
     expect(typeof req.id).toBe('string');
   });
@@ -349,23 +391,35 @@ describe('loadPgRfpDetail', () => {
     expect(res!.myBid?.id).toBe(bidId);
   });
 
-  it('buyerName에 구매사 워크스페이스 name을 반환', async () => {
+  it('buyer.name 에 구매사 워크스페이스 name을 반환', async () => {
     const rfpId = await ctx.seedRfp('P-2605-0013');
     await ctx.seedInvitation(rfpId, ctx.tossId, 'accepted');
 
     const res = await loadPgRfpDetail({ code: 'P-2605-0013', workspaceId: ctx.tossId });
     expect(res).not.toBeNull();
-    expect(res!.buyerName).toBe('구매사');
+    expect(res!.buyer.name).toBe('구매사');
   });
 
-  it('buyerLogoUpdatedAt을 반환한다 (로고 없으면 null)', async () => {
+  it('buyer.logoUpdatedAt 을 반환한다 (로고 없으면 null)', async () => {
     const rfpId = await ctx.seedRfp('P-2605-0015');
     await ctx.seedInvitation(rfpId, ctx.tossId, 'accepted');
 
     const res = await loadPgRfpDetail({ code: 'P-2605-0015', workspaceId: ctx.tossId });
     expect(res).not.toBeNull();
     // 시드 워크스페이스는 logoUpdatedAt을 설정하지 않으므로 null.
-    expect(res!.buyerLogoUpdatedAt).toBeNull();
+    expect(res!.buyer.logoUpdatedAt).toBeNull();
+  });
+
+  it('buyer 에 구매사 신원(이름 + 로고 버전)을 함께 반환한다', async () => {
+    const logoAt = new Date('2026-03-04T05:06:07.000Z');
+    await ctx.db.update(workspaces).set({ logoUpdatedAt: logoAt }).where(eq(workspaces.id, ctx.buyerWsId));
+    const rfpId = await ctx.seedRfp('P-2605-0016');
+    await ctx.seedInvitation(rfpId, ctx.tossId, 'accepted');
+
+    const res = await loadPgRfpDetail({ code: 'P-2605-0016', workspaceId: ctx.tossId });
+    expect(res!.buyer.id).toBe(ctx.buyerWsId);
+    expect(res!.buyer.name).toBe('구매사');
+    expect(res!.buyer.logoUpdatedAt).toBe(logoAt.toISOString());
   });
 
   it('pending 재요청이 있으면 pendingRequote 반환; 없으면 null', async () => {

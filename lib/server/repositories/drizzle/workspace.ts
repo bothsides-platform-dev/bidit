@@ -17,7 +17,7 @@ import type {
   WorkspaceType,
 } from '@/lib/types/workspace';
 import type { User } from '@/lib/types/user';
-import type { WorkspaceRepo, Tx, TeamMember } from '../types';
+import type { WorkspaceRepo, Tx, TeamMember, WorkspaceDisplay } from '../types';
 
 /** ilike 메타문자 이스케이프 (사용자 입력 q 용). */
 function escapeIlike(s: string): string {
@@ -368,12 +368,7 @@ export class DrizzleWorkspaceRepository implements WorkspaceRepo {
     return row?.name;
   }
 
-  async getDisplayInfo(
-    workspaceId: string,
-    tx?: Tx,
-  ): Promise<
-    { id: string; name: string; type: WorkspaceType; logoUpdatedAt: string | null } | undefined
-  > {
+  async getDisplayInfo(workspaceId: string, tx?: Tx): Promise<WorkspaceDisplay | undefined> {
     const db = this.h(tx);
     const [row] = (await db
       .select({
@@ -394,10 +389,7 @@ export class DrizzleWorkspaceRepository implements WorkspaceRepo {
     };
   }
 
-  async findDisplayInfoByIds(
-    ids: string[],
-    tx?: Tx,
-  ): Promise<{ id: string; name: string; type: WorkspaceType; logoUpdatedAt: string | null }[]> {
+  async findDisplayInfoByIds(ids: string[], tx?: Tx): Promise<WorkspaceDisplay[]> {
     if (ids.length === 0) return [];
     const db = this.h(tx);
     const rows = (await db

@@ -3,6 +3,20 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MetricComparePopover, type CompareRow } from '../MetricComparePopover';
 import type { Bid } from '@/lib/types/bid';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
+// pgWsId → 표시 신원. 이름 맵과 로고 맵을 나누지 않는다 — 둘 중 하나만 배선되는 사고가
+// 딜룸 로고 누락의 원인이었다.
+const wsById = (
+  names: Record<string, string>,
+  logos: Record<string, string | null> = {},
+): Record<string, WorkspaceDisplay> =>
+  Object.fromEntries(
+    Object.entries(names).map(([id, name]) => [
+      id,
+      { id, name, type: 'pg' as const, logoUpdatedAt: logos[id] ?? null },
+    ]),
+  );
+
 
 beforeAll(() => {
   if (!('ResizeObserver' in globalThis)) {
@@ -39,7 +53,7 @@ const rows: CompareRow[] = [
   { bid: makeBid('b-nice', 'pg-nice'), isBest: false, valueText: '2.80%' },
 ];
 
-const pgWsNameMap = { 'pg-toss': '토스페이먼츠', 'pg-kg': 'KG이니시스', 'pg-nice': '나이스페이' };
+const pgWsById = wsById({ 'pg-toss': '토스페이먼츠', 'pg-kg': 'KG이니시스', 'pg-nice': '나이스페이' });
 
 afterEach(cleanup);
 
@@ -51,7 +65,7 @@ describe('MetricComparePopover', () => {
         label="카드 수수료"
         rows={rows}
         activeBidId="b-kg"
-        pgWsNameMap={pgWsNameMap}
+        pgWsById={pgWsById}
         onSelect={vi.fn()}
       >
         <span>2.50%</span>
@@ -73,7 +87,7 @@ describe('MetricComparePopover', () => {
         label="카드 수수료"
         rows={rows}
         activeBidId="b-kg"
-        pgWsNameMap={pgWsNameMap}
+        pgWsById={pgWsById}
         onSelect={vi.fn()}
       >
         <span>2.50%</span>
@@ -94,7 +108,7 @@ describe('MetricComparePopover', () => {
         label="카드 수수료"
         rows={rows}
         activeBidId="b-kg"
-        pgWsNameMap={pgWsNameMap}
+        pgWsById={pgWsById}
         baselineText="2.8%"
         onSelect={vi.fn()}
       >
@@ -115,7 +129,7 @@ describe('MetricComparePopover', () => {
         label="카드 수수료"
         rows={rows}
         activeBidId="b-kg"
-        pgWsNameMap={pgWsNameMap}
+        pgWsById={pgWsById}
         onSelect={onSelect}
       >
         <span>2.50%</span>

@@ -6,6 +6,7 @@
 import { Popover } from '@base-ui/react/popover';
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
 import type { Bid } from '@/lib/types/bid';
 
 export type CompareRow = { bid: Bid; isBest: boolean; valueText: string };
@@ -14,7 +15,7 @@ export function MetricComparePopover({
   label,
   rows,
   activeBidId,
-  pgWsNameMap,
+  pgWsById,
   baselineText,
   onSelect,
   children,
@@ -22,7 +23,7 @@ export function MetricComparePopover({
   label: string;
   rows: CompareRow[];
   activeBidId: string;
-  pgWsNameMap: Record<string, string>;
+  pgWsById: Record<string, WorkspaceDisplay>;
   baselineText?: string | null;
   onSelect: (pgWsId: string) => void;
   children: ReactNode;
@@ -62,7 +63,7 @@ export function MetricComparePopover({
             <ul className="space-y-0.5">
               {rows.map((row) => {
                 const isActive = row.bid.id === activeBidId;
-                const name = pgWsNameMap[row.bid.pgWsId] ?? row.bid.pgWsId;
+                const name = pgWsById[row.bid.pgWsId]?.name ?? row.bid.pgWsId;
                 const inner = (
                   <>
                     <span className="flex items-center gap-1.5 min-w-0">

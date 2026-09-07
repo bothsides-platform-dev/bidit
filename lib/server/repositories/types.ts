@@ -595,6 +595,10 @@ export interface PgRequestRepo {
 }
 
 // ── Workspace ─────────────────────────────────────────────────────────
+/** 표시용 워크스페이스 신원 — 정의는 `lib/types/workspace` 소유(클라이언트도 쓴다). */
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
+export type { WorkspaceDisplay };
+
 export type TeamMember = { userId: string; name: string; joinedAt: string; avatarUpdatedAt: string | null };
 
 export interface PresenceAccessRepo {
@@ -650,21 +654,13 @@ export interface WorkspaceRepo {
    * 표시용 경량 정보 — 신원 카드/메시지 컴포즈가 상대 워크스페이스를 그리는 데 필요한
    * 최소 필드(id·상호명·유형·로고 버전)만. 멤버/bizProfile hydration 없음. 없으면 undefined.
    */
-  getDisplayInfo(
-    workspaceId: string,
-    tx?: Tx,
-  ): Promise<
-    { id: string; name: string; type: WorkspaceType; logoUpdatedAt: string | null } | undefined
-  >;
+  getDisplayInfo(workspaceId: string, tx?: Tx): Promise<WorkspaceDisplay | undefined>;
   /**
    * getDisplayInfo 의 배치판 — 워크스페이스 이름/로고를 id 목록으로 한 번에.
    * RFP 상세·대화 목록 로더가 id 마다 findById 를 돌던 N+1 을 없앤다.
    * 존재하지 않는 id 는 결과에서 빠진다(자리표시자 없음). 순서 미보장.
    */
-  findDisplayInfoByIds(
-    ids: string[],
-    tx?: Tx,
-  ): Promise<{ id: string; name: string; type: WorkspaceType; logoUpdatedAt: string | null }[]>;
+  findDisplayInfoByIds(ids: string[], tx?: Tx): Promise<WorkspaceDisplay[]>;
   /**
    * isMember 의 배치판 — 주어진 워크스페이스 중 사용자가 속한 곳 하나의 id,
    * 없으면 null. 프로필 카드가 상대 워크스페이스마다 isMember 를 돌던 루프를

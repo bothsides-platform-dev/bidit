@@ -177,6 +177,16 @@ v0.4.35.0 부터 이 차이가 **사용자에게 보인다**: `WorkspaceLogoForm
 ### 선정 후 구매사 담당자(createdBy) 탈퇴 시 승자 PG가 빈 딜룸 (P3)
 선정 연락처 교환(`CounterpartyContactCard`)은 `findContactById`가 fail-closed라, 구매사 담당자(RFP `createdBy`)가 탈퇴/시스템계정이면 `buyerContact=null`이 된다. 승자 PG 분기는 `awardedToMe && buyerContact`로 카드를, `awarded && !awardedToMe`로 미선정 안내를 그리므로 — 승자인데 buyerContact만 null이면 카드도 안내도 안 떠 빈 화면이 된다(드묾·누출 아님·정상 fail-closed). 후속: 연락처 없음 안내 폴백 또는 워크스페이스 대표 담당자 폴백 검토. (발견: /ship 적대 리뷰 2026-06-27)
 
+### `WorkspaceAvatar.workspaceId` 는 아직 optional — 로고 누락의 남은 한 축 (P4)
+v0.9.x 에서 `logoUpdatedAt` 을 필수로 올려 "배선을 잊음"과 "로고 없음"을 구분되게 만들었지만
+(`Counterparty`·`WorkspaceAvatar`), 같은 컴포넌트의 `workspaceId` 는 여전히 optional 이다.
+img 분기는 **둘 다** 있어야 켜지므로, 로고 버전만 넘기고 id 를 빠뜨리면 똑같이 조용히
+이니셜로 떨어진다. 현재 실피해는 없다 — 호출부 전수(7/7)가 id 를 넘긴다. 닫지 않은 이유는
+`workspaceId` 없는 "이니셜 전용 아바타"가 의도된 용법이고(`WorkspaceAvatar.test.tsx` 가
+그 분기를 명시적으로 검증한다) 그것까지 없애려면 props 를 `WorkspaceDisplay` 하나 또는
+`{name}` 유니온으로 바꿔야 해서, 이번 변경의 범위를 넘는다. 닫는 법 후보: prop 을
+`identity: WorkspaceDisplay | { name: string }` 판별 유니온으로. (발견: 로고 누락 구조 수정 작업)
+
 ## Settings / Account
 
 ### 설정 페이지 `canEditWorkspace` 의 미승인-admin 축이 무테스트다 (P2)
