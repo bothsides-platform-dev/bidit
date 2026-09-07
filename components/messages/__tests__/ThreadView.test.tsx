@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import type { UseChatChannelResult } from '@/lib/hooks/useChatChannel';
 import type { ChatReadEvent } from '@/lib/chat/read-state/event';
 import { NEW_TAB_NOTICE } from '@/lib/a11y/link-notice';
+import { isThreadOpen } from '@/lib/chat/open-threads';
 
 class ResizeObserverStub {
   observe() {}
@@ -303,6 +304,14 @@ describe('ThreadView', () => {
 
     expect(await screen.findByText('내 메시지 echo')).toBeInTheDocument();
     expect(markConversationReadAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('열려 있는 동안 그 대화를 열린 스레드로 등록한다(토스트 억제 근거)', () => {
+    const { unmount } = render(base());
+    expect(isThreadOpen('/messages?c=conv-1')).toBe(true);
+
+    unmount();
+    expect(isThreadOpen('/messages?c=conv-1')).toBe(false);
   });
 
   it('상대 읽음 영수증 projection을 Conversation read-state hook에 위임한다', () => {

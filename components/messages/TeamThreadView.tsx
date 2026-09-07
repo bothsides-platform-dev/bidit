@@ -21,6 +21,8 @@ import { ACCEPT_EXT } from '@/lib/server/storage/constants';
 import { sendTeamMessageAction } from '@/lib/server/actions/chat/sendTeamMessageAction';
 import { markTeamThreadReadAction } from '@/lib/server/actions/chat/markTeamThreadReadAction';
 import { useMarkReadWhileVisible } from '@/lib/hooks/useMarkReadWhileVisible';
+import { useOpenThreadRegistration } from '@/lib/chat/open-threads';
+import { teamThreadLink } from '@/lib/chat/thread-link';
 import { useTeamChannel, type TeamLivePayload } from '@/lib/hooks/useTeamChannel';
 import { toast } from '@/lib/toast';
 import type { TeamThreadMessage } from '@/lib/server/actions/chat/teamThreadLoader';
@@ -95,6 +97,9 @@ export function TeamThreadView({ rfpId, workspaceId, viewerUserId, viewerAvatarU
     key: rfpId,
     run: (id) => void markTeamThreadReadAction({ rfpId: id }),
   });
+
+  // 이 스레드를 보고 있는 동안에는 같은 스레드의 알림 토스트를 띄우지 않는다.
+  useOpenThreadRegistration(teamThreadLink(rfpId));
 
   useTeamChannel(rfpId, workspaceId, {
     onMessage: (data: TeamLivePayload) => {

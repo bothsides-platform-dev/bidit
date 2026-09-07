@@ -8,6 +8,7 @@ import { render, screen, cleanup, waitFor, act, fireEvent, within } from '@testi
 import userEvent from '@testing-library/user-event';
 
 import { formatTime } from '../format';
+import { isThreadOpen } from '@/lib/chat/open-threads';
 
 if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
 
@@ -225,6 +226,14 @@ describe('TeamThreadView — 렌더', () => {
 
     expect(await screen.findByText('내가 쓴 메모')).toBeInTheDocument();
     expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('열려 있는 동안 그 팀 스레드를 열린 스레드로 등록한다(토스트 억제 근거)', () => {
+    const { unmount } = render(base());
+    expect(isThreadOpen('/messages?t=rfp-1')).toBe(true);
+
+    unmount();
+    expect(isThreadOpen('/messages?t=rfp-1')).toBe(false);
   });
 
   it('컴포저는 좁은 레일에서 placeholder 가 두 줄로 잘리지 않도록 min-w-0 슬롯과 한 줄 placeholder 를 쓴다', () => {

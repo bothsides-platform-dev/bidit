@@ -123,6 +123,10 @@ export default defineConfig({
             "lib/__tests__/**/*.{test,spec}.{ts,tsx}",
             "lib/theme/**/*.{test,spec}.{ts,tsx}",
             "lib/attribution/**/*.{test,spec}.{ts,tsx}",
+            // lib/chat/** 은 클라이언트 쪽 대화 상태(read-state client·열린 스레드
+            // 레지스트리)를 담는다. 여기 없으면 그 디렉터리의 테스트가 **조용히
+            // 스킵된다** — include 는 디렉터리 열거식이다.
+            "lib/chat/**/*.{test,spec}.{ts,tsx}",
           ],
         },
       },

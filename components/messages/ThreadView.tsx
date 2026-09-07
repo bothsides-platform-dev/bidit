@@ -14,6 +14,8 @@ import { DRAFT_OWNER_ID, ACCEPT_EXT } from '@/lib/server/storage/constants';
 import { sendChatMessageAction } from '@/lib/server/actions/chat/sendChatMessageAction';
 import { markConversationReadAction } from '@/lib/server/actions/chat/markConversationReadAction';
 import { useMarkReadWhileVisible } from '@/lib/hooks/useMarkReadWhileVisible';
+import { useOpenThreadRegistration } from '@/lib/chat/open-threads';
+import { conversationThreadLink } from '@/lib/chat/thread-link';
 import { useChatChannel } from '@/lib/hooks/useChatChannel';
 import { useConversationReadReceipt } from '@/lib/chat/read-state/client';
 import { useWorkspacePresence } from '@/components/presence/WorkspacePresenceProvider';
@@ -199,6 +201,10 @@ export function ThreadView({
     key: conversationId,
     run: (id) => void markConversationReadAction({ conversationId: id }),
   });
+
+  // 이 대화를 보고 있는 동안에는 같은 대화의 알림 토스트를 띄우지 않는다 —
+  // 메시지는 이미 눈앞에 말풍선으로 도착한다(VoC "대화에 사용자가 있는데도 알림").
+  useOpenThreadRegistration(conversationThreadLink(conversationId));
 
   // Live channel — graceful no-op when realtime is unconfigured (dev/tests):
   // typingUserIds empty, onMessage/onRead never fire, and the thread runs
