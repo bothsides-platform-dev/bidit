@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.1.0] - 2026-09-07
+
+### Changed
+
+- **보낸 메시지가 바로 말풍선으로 보여요**: 상대방 채팅과 팀 채팅에서 전송 직후 메시지가 목록에 즉시 표시돼요. 전송에 실패하면 작성한 내용과 첨부 파일은 그대로 다시 확인하고 보낼 수 있어요.
+
 ## [0.9.0.0] - 2026-09-06
 
 ### Added

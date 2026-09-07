@@ -34,10 +34,7 @@ describe('promoteSentMessage', () => {
     expect(out[0]).toMatchObject({ id: 'real-1', pending: false, attachments: ['f1'] });
   });
 
-  // morph 안정 키 불변식: 전송 morph 는 행을 localKey 로 키잉하고, 승격 중에도 그
-  // 키가 안정적이어야 클론↔실 말풍선 매칭(opacity-0 게이트)이 유지된다. id 만 real 로
-  // 바뀌고 localKey 는 보존돼야 한다(patch 가 다른 필드를 덮어써도).
-  it('preserves localKey through promotion (id changes, localKey stays — morph key stability)', () => {
+  it('preserves localKey through promotion (id changes, localKey stays)', () => {
     const opt: Msg = { id: 'tmp', localKey: 'tmp', pending: true, createdAt: 'T0', body: 'hi' };
     const out = promoteSentMessage([opt], 'tmp', 'real-1', 'TS', { attachments: ['f1'] });
     expect(out[0]).toMatchObject({ id: 'real-1', localKey: 'tmp', pending: false, attachments: ['f1'] });
@@ -78,7 +75,7 @@ describe('applyLiveEcho', () => {
     expect(out).toEqual([{ id: 'real-1', pending: false, createdAt: 'TS', body: 'hi' }]);
   });
 
-  it('preserves localKey on self-echo promotion (morph key stability)', () => {
+  it('preserves localKey on self-echo promotion', () => {
     const opt: Msg = { id: 'tmp', localKey: 'tmp', pending: true, createdAt: 'T0', body: 'hi' };
     const out = applyLiveEcho([opt], 'real-1', true, 'TS');
     expect(out?.[0]).toMatchObject({ id: 'real-1', localKey: 'tmp', pending: false });
