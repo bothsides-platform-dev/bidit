@@ -48,6 +48,55 @@ describe('useMarkReadWhileVisible', () => {
     expect(run).toHaveBeenCalledTimes(1);
   });
 
+  it('does NOT mark read on mount when the tab is already hidden', () => {
+    // 백그라운드 탭에서 열린 스레드(다른 탭에서 링크를 열어 둔 경우)가 상대에게
+    // 거짓 읽음 영수증을 보내지 않는다 — 훅 헤더가 load-bearing 이라고 부르는
+    // 게이트의 마운트 쪽 절반이다. 나머지 절반(도착 시)은 아래 테스트가 본다.
+    setVisibility('hidden');
+    const run = vi.fn();
+    renderHook(() => useMarkReadWhileVisible({ key: 'conv-1', run }));
+
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(run).not.toHaveBeenCalled();
+
+    // 탭으로 돌아오면 그때 한 번 만회한다.
+    act(() => {
+      setVisibility('visible');
+      vi.runAllTimers();
+    });
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledWith('conv-1');
+  });
+
+  it('catches up with the NEW key when the thread switches while hidden', () => {
+    const run = vi.fn();
+    const { rerender } = renderHook(
+      ({ key }: { key: string }) => useMarkReadWhileVisible({ key, run }),
+      { initialProps: { key: 'conv-1' } },
+    );
+    run.mockClear();
+
+    act(() => {
+      setVisibility('hidden');
+    });
+    rerender({ key: 'conv-2' });
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(run).not.toHaveBeenCalled();
+
+    act(() => {
+      setVisibility('visible');
+      vi.runAllTimers();
+    });
+    expect(run).toHaveBeenCalledTimes(1);
+    // 숨은 동안 갈아탄 대화를 읽음 처리해야 한다 — 옛 키로 보내면 엉뚱한 대화가
+    // 읽음이 되고 지금 보고 있는 대화는 배지가 남는다.
+    expect(run).toHaveBeenCalledWith('conv-2');
+  });
+
   it('marks read again when a message arrives while visible', () => {
     const run = vi.fn();
     const { result } = renderHook(() => useMarkReadWhileVisible({ key: 'conv-1', run }));

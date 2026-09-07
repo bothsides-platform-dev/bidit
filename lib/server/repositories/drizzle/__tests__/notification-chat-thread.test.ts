@@ -12,6 +12,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
 import { createPgliteDb } from '@/lib/db/client-pglite';
+import { teamThreadLink } from '@/lib/chat/thread-link';
 import { DrizzleNotificationRepository } from '../notification';
 import { seedBuyerWorkspace, seedMembership, seedUser } from './_seed';
 import type { Notification } from '@/lib/types/notification';
@@ -80,6 +81,37 @@ describe('DrizzleNotificationRepository.markChatThreadRead', () => {
     expect(byLink.get(CONV_B)).toBe('pending');
   });
 
+  it('clears every type sharing that thread link, not just chat.message', async () => {
+    // 판정은 링크 하나이고 type 을 보지 않는다(types.ts 의 markChatThreadRead 주석).
+    // 팀 스레드에서는 메시지 알림과 멘션 알림이 같은 링크를 달고 오므로, 여기서
+    // type 을 좁히면(= hasPendingChatNotification 을 흉내내면) 멘션 배지가 조용히
+    // 안 걷힌다. 그 '합리적인 조이기'를 이 테스트가 막는다.
+    const { repo, user, ws } = await setup();
+    const link = teamThreadLink('11111111-1111-4111-8111-1111111111aa');
+    await repo.save(
+      chatNotification({
+        userId: user.id,
+        workspaceId: ws.id,
+        linkUrl: link,
+        type: 'team_chat.message',
+      }),
+    );
+    await repo.save(
+      chatNotification({
+        userId: user.id,
+        workspaceId: ws.id,
+        linkUrl: link,
+        type: 'team_chat.mention',
+      }),
+    );
+
+    await repo.markChatThreadRead(user.id, ws.id, link);
+
+    const rows = await repo.findRecentForUser(user.id, ws.id, 10);
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.status === 'read')).toBe(true);
+  });
+
   it("leaves another member's rows untouched", async () => {
     const { repo, user, other, ws } = await setup();
     await repo.save(chatNotification({ userId: other.id, workspaceId: ws.id, linkUrl: CONV_A }));
@@ -88,6 +120,40 @@ describe('DrizzleNotificationRepository.markChatThreadRead', () => {
 
     const rows = await repo.findRecentForUser(other.id, ws.id, 10);
     expect(rows[0].status).toBe('pending');
+  });
+
+  it('leaves the same user’s rows in a DIFFERENT workspace untouched', async () => {
+    // 워크스페이스 경계 — 한 사람이 구매사와 PG 워크스페이스를 함께 가질 수 있고,
+    // 링크만으로 지우면 지금 보고 있지 않은 쪽 배지까지 걷힌다. 픽스처가 전부 한
+    // 워크스페이스를 쓰면 `eq(workspaceId)` 를 지워도 테스트가 통과한다.
+    const { db, repo, user, ws } = await setup();
+    const otherWs = await seedBuyerWorkspace(db);
+    await seedMembership(db, otherWs.id, user.id);
+    await repo.save(
+      chatNotification({ userId: user.id, workspaceId: otherWs.id, linkUrl: CONV_A }),
+    );
+
+    await repo.markChatThreadRead(user.id, ws.id, CONV_A);
+
+    const rows = await repo.findRecentForUser(user.id, otherWs.id, 10);
+    expect(rows[0].status).toBe('pending');
+  });
+
+  it('does not move readAt on a row that was already read', async () => {
+    // `isNull(readAt)` 가드가 없으면 다시 열 때마다 readAt 이 앞으로 밀려
+    // "언제 읽었나"가 마지막 열람 시각으로 덮인다.
+    const { db, repo, user, ws } = await setup();
+    await repo.save(chatNotification({ userId: user.id, workspaceId: ws.id, linkUrl: CONV_A }));
+    await repo.markChatThreadRead(user.id, ws.id, CONV_A);
+    const firstReadAt = (await repo.findRecentForUser(user.id, ws.id, 10))[0].readAt;
+    expect(firstReadAt).toBeDefined();
+
+    await new Promise((r) => setTimeout(r, 5));
+    await repo.markChatThreadRead(user.id, ws.id, CONV_A);
+
+    const after = (await repo.findRecentForUser(user.id, ws.id, 10))[0];
+    expect(after.readAt).toBe(firstReadAt);
+    void db;
   });
 });
 
