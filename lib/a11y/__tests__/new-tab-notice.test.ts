@@ -9,7 +9,7 @@
 // 깨지기 쉬운 코드가 되므로, "새 파일이 고지 없이 들어오는" 흔한 회귀만 막는다.
 
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 
@@ -25,7 +25,9 @@ function tsxFilesWithBlankTarget(): string[] {
   const tracked = execFileSync('git', ['ls-files', '*.tsx'], { cwd: ROOT, encoding: 'utf8' })
     .split('\n')
     .filter(Boolean)
-    .filter((f) => !f.includes('__tests__'));
+    .filter((f) => !f.includes('__tests__'))
+    // git ls-files 는 삭제를 stage 하기 전까지 index의 경로를 포함한다.
+    .filter((f) => existsSync(path.join(ROOT, f)));
   return tracked.filter((f) => readFileSync(path.join(ROOT, f), 'utf8').includes('target="_blank"'));
 }
 
