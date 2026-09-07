@@ -1,5 +1,6 @@
 import { and, desc, eq, gte, isNull, or, sql } from 'drizzle-orm';
 import { notifications } from '@/lib/db/schema';
+import { teamThreadLink } from '@/lib/chat/thread-link';
 import type {
   Notification,
   NotificationChannel,
@@ -145,6 +146,7 @@ export class DrizzleNotificationRepository implements NotificationRepo {
   async hasPendingChatNotification(
     userId: string,
     workspaceId: string,
+    threadLinkUrl: string,
     windowStart: Date,
     tx?: Tx,
   ): Promise<boolean> {
@@ -158,11 +160,34 @@ export class DrizzleNotificationRepository implements NotificationRepo {
           eq(notifications.workspaceId, workspaceId),
           eq(notifications.type, 'chat.message'),
           eq(notifications.status, 'queued'),
+          // 대화 컬럼이 없어 linkUrl 이 곧 대화 식별자다(팀 채팅과 같은 방식).
+          eq(notifications.linkUrl, threadLinkUrl),
           gte(notifications.createdAt, windowStart),
         ),
       )
       .limit(1);
     return rows.length > 0;
+  }
+
+  async markChatThreadRead(
+    userId: string,
+    workspaceId: string,
+    threadLinkUrl: string,
+    tx?: Tx,
+  ): Promise<void> {
+    const db = this.h(tx);
+    await db
+      .update(notifications)
+      .set({ status: 'read', readAt: sql`now()` })
+      .where(
+        and(
+          eq(notifications.userId, userId),
+          eq(notifications.workspaceId, workspaceId),
+          eq(notifications.linkUrl, threadLinkUrl),
+          // 이미 읽은 행은 건드리지 않는다 — readAt 이 뒤로 밀리면 안 된다.
+          isNull(notifications.readAt),
+        ),
+      );
   }
 
   async hasPendingTeamNotification(
@@ -180,7 +205,7 @@ export class DrizzleNotificationRepository implements NotificationRepo {
         and(
           eq(notifications.userId, userId),
           eq(notifications.type, 'team_chat.message'),
-          eq(notifications.linkUrl, `/messages?t=${rfpId}`),
+          eq(notifications.linkUrl, teamThreadLink(rfpId)),
           eq(notifications.status, 'queued'),
           gte(notifications.createdAt, windowStart),
         ),
@@ -217,7 +242,7 @@ export class DrizzleNotificationRepository implements NotificationRepo {
         and(
           eq(notifications.userId, userId),
           eq(notifications.type, 'team_chat.mention'),
-          eq(notifications.linkUrl, `/messages?t=${rfpId}`),
+          eq(notifications.linkUrl, teamThreadLink(rfpId)),
           eq(notifications.status, 'queued'),
           gte(notifications.createdAt, windowStart),
         ),

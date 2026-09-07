@@ -115,9 +115,62 @@ describe('ChatService.sendMessage', () => {
     );
 
     expect(result.ok).toBe(true);
+    if (!result.ok) return;
     const notifs = await db.select().from(notifications);
     expect(notifs.length).toBeGreaterThan(0);
     expect(notifs[0].type).toBe('chat.message');
+    // 대화 식별자를 링크에 싣는다 — 알림 행에 대화 컬럼이 없어서 이 링크가
+    // 읽음 정리·토스트 억제·dedupe 의 유일한 대화 키다(딥링크도 겸한다).
+    expect(notifs[0].linkUrl).toBe(`/messages?c=${result.conversationId}`);
+  });
+
+  it('does not let another conversation’s queued notification suppress this one (regression)', async () => {
+    const { pgUser, pgWs } = await seedPair();
+
+    // 같은 PG 담당자와 대화하는 구매사 둘. 예전 dedupe 는 (user, workspace) 범위라
+    // 먼저 온 대화의 queued 알림이 나중 대화의 알림을 통째로 삼켰다.
+    const buyerAUser = await seedUser(db, { email: 'a@chat.com', name: 'A담당' });
+    const buyerAWs = await seedBuyerWorkspace(db, { name: 'A상사' });
+    await seedMembership(db, buyerAWs.id, buyerAUser.id, 'admin');
+    const buyerBUser = await seedUser(db, { email: 'b@chat.com', name: 'B담당' });
+    const buyerBWs = await seedBuyerWorkspace(db, { name: 'B상사' });
+    await seedMembership(db, buyerBWs.id, buyerBUser.id, 'admin');
+
+    const first = await service.sendMessage(
+      { counterpartyWorkspaceId: pgWs.id, body: 'A 입니다', attachmentIds: [] },
+      { userId: buyerAUser.id, workspaceId: buyerAWs.id, workspaceType: 'buyer' },
+    );
+    const second = await service.sendMessage(
+      { counterpartyWorkspaceId: pgWs.id, body: 'B 입니다', attachmentIds: [] },
+      { userId: buyerBUser.id, workspaceId: buyerBWs.id, workspaceType: 'buyer' },
+    );
+    expect(first.ok && second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+
+    const notifs = await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.userId, pgUser.id));
+    expect(new Set(notifs.map((n) => n.linkUrl))).toEqual(
+      new Set([`/messages?c=${first.conversationId}`, `/messages?c=${second.conversationId}`]),
+    );
+  });
+
+  it('still dedupes a second message within the same conversation window', async () => {
+    const { buyerUser, buyerWs, pgUser, pgWs } = await seedPair();
+
+    for (const body of ['첫 메시지', '둘째 메시지']) {
+      await service.sendMessage(
+        { counterpartyWorkspaceId: pgWs.id, body, attachmentIds: [] },
+        { userId: buyerUser.id, workspaceId: buyerWs.id, workspaceType: 'buyer' },
+      );
+    }
+
+    const notifs = await db
+      .select()
+      .from(notifications)
+      .where(eq(notifications.userId, pgUser.id));
+    expect(notifs).toHaveLength(1);
   });
 
   it('enqueues a windowed-digest outbox row for the offline counterparty', async () => {
