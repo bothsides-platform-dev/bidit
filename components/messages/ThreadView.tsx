@@ -14,6 +14,7 @@ import { DRAFT_OWNER_ID, ACCEPT_EXT } from '@/lib/server/storage/constants';
 import { sendChatMessageAction } from '@/lib/server/actions/chat/sendChatMessageAction';
 import { markConversationReadAction } from '@/lib/server/actions/chat/markConversationReadAction';
 import { useMarkReadWhileVisible } from '@/lib/hooks/useMarkReadWhileVisible';
+import { markThreadReadLocal } from '@/lib/hooks/useNotifications';
 import { useOpenThreadRegistration } from '@/lib/chat/open-threads';
 import { conversationThreadLink } from '@/lib/chat/thread-link';
 import { useChatChannel } from '@/lib/hooks/useChatChannel';
@@ -199,7 +200,12 @@ export function ThreadView({
   // 배지도 읽음 영수증도 그대로였다(VoC).
   const markRead = useMarkReadWhileVisible({
     key: conversationId,
-    run: (id) => void markConversationReadAction({ conversationId: id }),
+    run: (id) => {
+      // 서버가 같은 행을 곧바로 지우지만, 스토어는 마운트 1회만 hydrate 하므로
+      // 로컬에서도 내려야 사이드바 배지가 새로고침 전에 꺼진다.
+      markThreadReadLocal(conversationThreadLink(id));
+      void markConversationReadAction({ conversationId: id });
+    },
   });
 
   // 이 대화를 보고 있는 동안에는 같은 대화의 알림 토스트를 띄우지 않는다 —

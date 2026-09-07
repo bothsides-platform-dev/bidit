@@ -33,6 +33,12 @@ vi.mock('@/lib/server/actions/chat/markConversationReadAction', () => ({
   markConversationReadAction: (...args: unknown[]) => markConversationReadAction(...args),
 }));
 
+// 알림 스토어의 로컬 배지 정리 — 서버 액션 체인을 끌고 오므로 mock 한다.
+const markThreadReadLocal = vi.fn();
+vi.mock('@/lib/hooks/useNotifications', () => ({
+  markThreadReadLocal: (...args: unknown[]) => markThreadReadLocal(...args),
+}));
+
 // useChatChannel pulls in the real `centrifuge` SDK — mock it so jsdom stays
 // clean, and so we can control typing and capture the onMessage/onRead
 // callbacks the component registers. (online presence is now driven by
@@ -304,6 +310,14 @@ describe('ThreadView', () => {
 
     expect(await screen.findByText('내 메시지 echo')).toBeInTheDocument();
     expect(markConversationReadAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('읽음 처리와 함께 그 대화의 알림 배지를 로컬에서도 내린다', async () => {
+    render(base());
+
+    await waitFor(() =>
+      expect(markThreadReadLocal).toHaveBeenCalledWith('/messages?c=conv-1'),
+    );
   });
 
   it('열려 있는 동안 그 대화를 열린 스레드로 등록한다(토스트 억제 근거)', () => {

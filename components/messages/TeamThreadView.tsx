@@ -21,6 +21,7 @@ import { ACCEPT_EXT } from '@/lib/server/storage/constants';
 import { sendTeamMessageAction } from '@/lib/server/actions/chat/sendTeamMessageAction';
 import { markTeamThreadReadAction } from '@/lib/server/actions/chat/markTeamThreadReadAction';
 import { useMarkReadWhileVisible } from '@/lib/hooks/useMarkReadWhileVisible';
+import { markThreadReadLocal } from '@/lib/hooks/useNotifications';
 import { useOpenThreadRegistration } from '@/lib/chat/open-threads';
 import { teamThreadLink } from '@/lib/chat/thread-link';
 import { useTeamChannel, type TeamLivePayload } from '@/lib/hooks/useTeamChannel';
@@ -95,7 +96,11 @@ export function TeamThreadView({ rfpId, workspaceId, viewerUserId, viewerAvatarU
   // 마운트 1회였을 때는 켜 둔 채 동료 메시지를 받으면 배지가 남았다.
   const markRead = useMarkReadWhileVisible({
     key: rfpId,
-    run: (id) => void markTeamThreadReadAction({ rfpId: id }),
+    run: (id) => {
+      // ThreadView 와 같은 이유 — 스토어를 로컬에서도 내려야 배지가 꺼진다.
+      markThreadReadLocal(teamThreadLink(id));
+      void markTeamThreadReadAction({ rfpId: id });
+    },
   });
 
   // 이 스레드를 보고 있는 동안에는 같은 스레드의 알림 토스트를 띄우지 않는다.

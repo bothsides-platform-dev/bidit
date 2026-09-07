@@ -1176,6 +1176,11 @@ export interface NotificationRepo {
    * 실제로 보고 있을 때 배지를 걷어내는 경로. 대화 식별자는 `hasPendingChatNotification`
    * 과 같은 linkUrl 이며, 1:1 대화(`/messages?c=…`)와 팀 스레드(`/messages?t=…`)에
    * 모두 쓴다.
+   *
+   * ⚠️ 판정은 링크 하나뿐이고 **type 을 보지 않는다** — 같은 스레드를 가리키는
+   * 알림이면 종류를 가리지 않고 함께 걷힌다(현재 `team_chat.mention` 이 그렇고,
+   * 스레드를 열어 본 이상 배지가 남을 이유가 없어 의도된 동작이다). 앞으로 그
+   * 링크를 재사용하는 알림 종류를 추가한다면 이 정리 대상에 함께 들어간다.
    */
   markChatThreadRead(
     userId: string,

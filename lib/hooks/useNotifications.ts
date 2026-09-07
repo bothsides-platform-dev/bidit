@@ -65,6 +65,27 @@ const useStore = create<NotifStore>((set) => ({
     })),
 }));
 
+/** 스토어 직접 검사용 — 테스트 전용(훅 밖에서 상태를 읽는 유일한 경로). */
+export const useNotificationStoreForTest = useStore;
+
+/**
+ * 한 스레드의 알림을 **로컬에서** 읽음으로 내린다 — 서버의 markChatThreadRead 와
+ * 짝. 없으면 그 대화를 보고 있는 동안 토스트만 안 뜨고 사이드바 배지는 계속
+ * 올라가 새로고침 전까지 남는다(스토어는 마운트 1회만 hydrate 한다).
+ *
+ * 낙관적이어도 안전하다 — 서버가 곧바로 같은 행을 같은 기준으로 쓴다.
+ */
+export function markThreadReadLocal(threadLinkUrl: string): void {
+  const readAt = new Date().toISOString();
+  useStore.setState((s) => ({
+    notifications: s.notifications.map((n) =>
+      n.linkUrl === threadLinkUrl && canMarkRead(n)
+        ? { ...n, status: 'read' as const, readAt }
+        : n,
+    ),
+  }));
+}
+
 // 팬아웃 폭주(예: 다수 수신자 award/close, 수다스러운 상대방)로 짧은 시간에
 // 알림이 몰리면 toast 가 줄줄이 큐에 쌓여 수 분간 흘러나온다. 이 윈도우 안에는
 // toast 를 1회만 발화해 storm 을 막는다. 미읽음 배지는 그대로 모두 증가한다.

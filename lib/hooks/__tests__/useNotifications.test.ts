@@ -365,6 +365,41 @@ describe('useNotifications — 라이브 알림 도착 시 toast', () => {
     }
   })
 
+  it('스레드를 읽으면 그 스레드 알림만 로컬에서도 읽음으로 내린다(배지)', async () => {
+    const { act } = await setupHook()
+    const { markThreadReadLocal, useNotificationStoreForTest } = await import(
+      '@/lib/hooks/useNotifications'
+    )
+
+    const fire = async (id: string, link: string) => {
+      await act(async () => {
+        EventSourceStub.latest?.onmessage?.(
+          new MessageEvent('message', {
+            data: JSON.stringify({
+              ...(makeNotif(id, '메시지') as object),
+              type: 'chat.message',
+              linkUrl: link,
+            }),
+          }),
+        )
+      })
+    }
+    await fire('n-here', '/messages?c=conv-here')
+    await fire('n-there', '/messages?c=conv-there')
+
+    await act(async () => {
+      markThreadReadLocal('/messages?c=conv-here')
+    })
+
+    const byId = new Map(
+      useNotificationStoreForTest
+        .getState()
+        .notifications.map((n) => [n.id, n.status]),
+    )
+    expect(byId.get('n-here')).toBe('read')
+    expect(byId.get('n-there')).toBe('sent')
+  })
+
   it('coalesce 윈도우 내 연속 알림은 toast 를 1회만 발화한다 (F2)', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(1_000_000)
     const { toast } = await import('@/lib/toast')

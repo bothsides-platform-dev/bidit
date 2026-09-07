@@ -42,6 +42,12 @@ vi.mock('@/lib/hooks/useTeamChannel', () => ({
   },
 }));
 
+// 알림 스토어의 로컬 배지 정리 — 서버 액션 체인을 끌고 오므로 mock 한다.
+const markThreadReadLocal = vi.fn();
+vi.mock('@/lib/hooks/useNotifications', () => ({
+  markThreadReadLocal: (...args: unknown[]) => markThreadReadLocal(...args),
+}));
+
 const toast = vi.fn();
 vi.mock('@/lib/toast', () => ({
   toast: (...args: unknown[]) => toast(...args),
@@ -226,6 +232,14 @@ describe('TeamThreadView — 렌더', () => {
 
     expect(await screen.findByText('내가 쓴 메모')).toBeInTheDocument();
     expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('읽음 처리와 함께 그 스레드의 알림 배지를 로컬에서도 내린다', async () => {
+    render(base());
+
+    await waitFor(() =>
+      expect(markThreadReadLocal).toHaveBeenCalledWith('/messages?t=rfp-1'),
+    );
   });
 
   it('열려 있는 동안 그 팀 스레드를 열린 스레드로 등록한다(토스트 억제 근거)', () => {
