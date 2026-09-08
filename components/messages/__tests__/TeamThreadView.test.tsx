@@ -8,8 +8,29 @@ import { render, screen, cleanup, waitFor, act, fireEvent, within } from '@testi
 import userEvent from '@testing-library/user-event';
 
 import { formatTime } from '../format';
+import { isThreadOpen } from '@/lib/chat/open-threads';
 
 if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
+
+// 하단 센티널 가시성 관찰자 — 읽음의 두 번째 게이트. jsdom 에 없어 스텁한다.
+type IoCb = (entries: { isIntersecting: boolean }[]) => void;
+const intersectionObservers: { fire: (v: boolean) => void }[] = [];
+class IntersectionObserverStub {
+  constructor(cb: IoCb) {
+    intersectionObservers.push({ fire: (v) => cb([{ isIntersecting: v }]) });
+  }
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+vi.stubGlobal('IntersectionObserver', IntersectionObserverStub);
+
+function scrollAwayFromBottom(): void {
+  for (const o of intersectionObservers) o.fire(false);
+}
+function scrollBackToBottom(): void {
+  for (const o of intersectionObservers) o.fire(true);
+}
 
 const sendTeamMessageAction = vi.fn();
 vi.mock('@/lib/server/actions/chat/sendTeamMessageAction', () => ({
@@ -39,6 +60,12 @@ vi.mock('@/lib/hooks/useTeamChannel', () => ({
     channelOptions = opts;
     return channelResult;
   },
+}));
+
+// 알림 스토어의 로컬 배지 정리 — 서버 액션 체인을 끌고 오므로 mock 한다.
+const markThreadReadLocal = vi.fn();
+vi.mock('@/lib/hooks/useNotifications', () => ({
+  markThreadReadLocal: (...args: unknown[]) => markThreadReadLocal(...args),
 }));
 
 const toast = vi.fn();
@@ -77,6 +104,8 @@ beforeEach(() => {
   uploadAttachment.mockReset();
   channelOptions = {};
   channelResult = { connected: null };
+  vi.mocked(markTeamThreadReadAction).mockClear();
+  intersectionObservers.length = 0;
 });
 
 import { TeamThreadView } from '../TeamThreadView';
@@ -155,6 +184,133 @@ describe('TeamThreadView — 렌더', () => {
   it('마운트 시 팀 스레드를 읽음 처리한다', () => {
     render(<TeamThreadView rfpId="r1" workspaceId="w1" viewerUserId="u1" viewerAvatarUpdatedAt={null} messages={[]} />);
     expect(markTeamThreadReadAction).toHaveBeenCalledWith({ rfpId: 'r1' });
+  });
+
+  it('열려 있는 동안 동료 메시지가 오면 다시 읽음 처리한다', async () => {
+    render(base({ viewerUserId: 'u-me' }));
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1));
+
+    act(() =>
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'tm-live-read',
+        body: '동료 메시지',
+        authorUserId: 'u-mate',
+        authorName: '이동료',
+        createdAt: '2026-06-10T07:00:00.000Z',
+      }),
+    );
+
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(2));
+  });
+
+  it('위로 스크롤해 최신 메시지가 화면에 없으면 읽음 처리하지 않는다', async () => {
+    render(base({ viewerUserId: 'u-me' }));
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1));
+
+    act(() => scrollAwayFromBottom());
+    act(() =>
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'tm-offscreen',
+        body: '화면 밖 동료 메시지',
+        authorUserId: 'u-mate',
+        authorName: '이동료',
+        createdAt: '2026-06-10T07:03:00.000Z',
+      }),
+    );
+
+    expect(await screen.findByText('화면 밖 동료 메시지')).toBeInTheDocument();
+    expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('아래로 다시 내려와 최신 메시지가 보이면 그때 읽음 처리한다', async () => {
+    render(base({ viewerUserId: 'u-me' }));
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1));
+
+    act(() => scrollAwayFromBottom());
+    act(() =>
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'tm-catchup',
+        body: '나중에 볼 동료 메시지',
+        authorUserId: 'u-mate',
+        authorName: '이동료',
+        createdAt: '2026-06-10T07:04:00.000Z',
+      }),
+    );
+    expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1);
+
+    act(() => scrollBackToBottom());
+
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(2));
+  });
+
+  it('탭이 숨겨져 있으면 도착한 메시지로 읽음 처리하지 않는다', async () => {
+    render(base({ viewerUserId: 'u-me' }));
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1));
+
+    const original = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState');
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'hidden',
+    });
+    try {
+      act(() =>
+        channelOptions.onMessage?.({
+          type: 'message',
+          id: 'tm-live-hidden',
+          body: '숨은 탭 동료 메시지',
+          authorUserId: 'u-mate',
+          authorName: '이동료',
+          createdAt: '2026-06-10T07:01:00.000Z',
+        }),
+      );
+      expect(await screen.findByText('숨은 탭 동료 메시지')).toBeInTheDocument();
+      expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1);
+    } finally {
+      if (original) Object.defineProperty(document, 'visibilityState', original);
+      else
+        Object.defineProperty(document, 'visibilityState', {
+          configurable: true,
+          get: () => 'visible',
+        });
+    }
+  });
+
+  it('내 메시지 echo 로는 읽음 처리하지 않는다', async () => {
+    render(base({ viewerUserId: 'u-me' }));
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1));
+
+    act(() =>
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'tm-live-self',
+        body: '내가 쓴 메모',
+        authorUserId: 'u-me',
+        authorName: '나',
+        createdAt: '2026-06-10T07:02:00.000Z',
+      }),
+    );
+
+    expect(await screen.findByText('내가 쓴 메모')).toBeInTheDocument();
+    expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('읽음 처리와 함께 그 스레드의 알림 배지를 로컬에서도 내린다', async () => {
+    render(base());
+
+    await waitFor(() =>
+      expect(markThreadReadLocal).toHaveBeenCalledWith('/messages?t=rfp-1'),
+    );
+  });
+
+  it('열려 있는 동안 그 팀 스레드를 열린 스레드로 등록한다(토스트 억제 근거)', () => {
+    const { unmount } = render(base());
+    expect(isThreadOpen('/messages?t=rfp-1')).toBe(true);
+
+    unmount();
+    expect(isThreadOpen('/messages?t=rfp-1')).toBe(false);
   });
 
   it('컴포저는 좁은 레일에서 placeholder 가 두 줄로 잘리지 않도록 min-w-0 슬롯과 한 줄 placeholder 를 쓴다', () => {

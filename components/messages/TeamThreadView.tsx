@@ -9,7 +9,7 @@
  * 내부 스레드이므로 타인 메시지에 멤버 이름+아바타 헤더를 단다. ChatRail 의
  * '팀 채팅' 탭 전용.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { UserProfileCard } from '@/components/profile/UserProfileCard';
@@ -20,6 +20,9 @@ import { ArrowUpIcon } from '@/components/icons';
 import { ACCEPT_EXT } from '@/lib/server/storage/constants';
 import { sendTeamMessageAction } from '@/lib/server/actions/chat/sendTeamMessageAction';
 import { markTeamThreadReadAction } from '@/lib/server/actions/chat/markTeamThreadReadAction';
+import { markThreadReadLocal } from '@/lib/hooks/useNotifications';
+import { useOpenThreadRegistration } from '@/lib/chat/open-threads';
+import { teamThreadLink } from '@/lib/chat/thread-link';
 import { useTeamChannel, type TeamLivePayload } from '@/lib/hooks/useTeamChannel';
 import { toast } from '@/lib/toast';
 import type { TeamThreadMessage } from '@/lib/server/actions/chat/teamThreadLoader';
@@ -27,6 +30,7 @@ import { MessageBubble } from './MessageBubble';
 import { ComposerAttachmentChips } from './ComposerAttachmentChips';
 import { useComposerAttachments, toReadyMessageAttachments } from './useComposerAttachments';
 import { useStickToBottom } from './useStickToBottom';
+import { useThreadReadTracking } from './useThreadReadTracking';
 import { promoteSentMessage, removeMessage, applyLiveEcho } from './optimistic-thread';
 import { computeMessageGrouping } from './message-grouping';
 import { useAutoGrowTextarea } from './useAutoGrowTextarea';
@@ -81,18 +85,29 @@ export function TeamThreadView({ rfpId, workspaceId, viewerUserId, viewerAvatarU
     [mention.nameById, viewerUserId],
   );
 
-  // 마운트(및 rfp 전환) 시 팀 스레드를 읽음 처리한다 — ThreadView 의
-  // markConversationReadAction 패턴 미러링.
-  useEffect(() => {
-    void markTeamThreadReadAction({ rfpId });
-  }, [rfpId]);
+  // 스레드가 열려 보이는 동안 읽음 처리를 이어간다 — ThreadView 와 같은 훅.
+  // 마운트 1회였을 때는 켜 둔 채 동료 메시지를 받으면 배지가 남았다.
+  const markRead = useThreadReadTracking({
+    threadKey: rfpId,
+    listRef,
+    bottomRef,
+    run: (id) => {
+      // ThreadView 와 같은 이유 — 스토어를 로컬에서도 내려야 배지가 꺼진다.
+      markThreadReadLocal(teamThreadLink(id));
+      void markTeamThreadReadAction({ rfpId: id });
+    },
+  });
 
+  // 이 스레드를 보고 있는 동안에는 같은 스레드의 알림 토스트를 띄우지 않는다.
+  useOpenThreadRegistration(teamThreadLink(rfpId));
 
   useTeamChannel(rfpId, workspaceId, {
     onMessage: (data: TeamLivePayload) => {
       if (!data.id || typeof data.body !== 'string' || !data.createdAt) return;
       const id = data.id;
       const isSelf = data.authorUserId === viewerUserId;
+      // 내 echo 로는 읽음을 갱신하지 않는다 — 동료가 쓴 것만 "봤다"의 대상이다.
+      if (!isSelf) markRead();
       // 재전달·승격 선행 케이스는 dedup. 본인 echo 면 tempId 로 정확 매칭 후
       // 확정 승격(append 하면 중복, 낙관적 첨부 보존), 아니면 새로 append.
       setLocalMessages(

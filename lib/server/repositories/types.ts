@@ -1150,13 +1150,37 @@ export interface NotificationRepo {
   markRead(id: string, tx?: Tx): Promise<void>;
   /** 사용자+워크스페이스 전부 읽음 처리. */
   markAllRead(userId: string, workspaceId: string, tx?: Tx): Promise<void>;
-  /** 동일 window 내 queued 상태 chat.message 알림 존재 여부 — 인앱 알림 중복 방지용. */
+  /**
+   * 동일 window 내 queued 상태 chat.message 알림 존재 여부 — 인앱 알림 중복 방지용.
+   *
+   * dedupe 범위는 **대화 단위**(`threadLinkUrl`)다. notifications 에는 대화 컬럼이
+   * 없어 링크가 유일한 식별자이며, 워크스페이스 전체로 잡으면 구매사가 PG 여럿과
+   * 대화 중일 때 한 대화의 queued 알림이 다른 대화의 새 알림을 삼킨다.
+   */
   hasPendingChatNotification(
     userId: string,
     workspaceId: string,
+    threadLinkUrl: string,
     windowStart: Date,
     tx?: Tx,
   ): Promise<boolean>;
+  /**
+   * 한 대화 스레드의 queued 인앱 알림을 읽음 처리한다 — 사용자가 그 대화를 열고
+   * 실제로 보고 있을 때 배지를 걷어내는 경로. 대화 식별자는 `hasPendingChatNotification`
+   * 과 같은 linkUrl 이며, 1:1 대화(`/messages?c=…`)와 팀 스레드(`/messages?t=…`)에
+   * 모두 쓴다.
+   *
+   * ⚠️ 판정은 링크 하나뿐이고 **type 을 보지 않는다** — 같은 스레드를 가리키는
+   * 알림이면 종류를 가리지 않고 함께 걷힌다(현재 `team_chat.mention` 이 그렇고,
+   * 스레드를 열어 본 이상 배지가 남을 이유가 없어 의도된 동작이다). 앞으로 그
+   * 링크를 재사용하는 알림 종류를 추가한다면 이 정리 대상에 함께 들어간다.
+   */
+  markChatThreadRead(
+    userId: string,
+    workspaceId: string,
+    threadLinkUrl: string,
+    tx?: Tx,
+  ): Promise<void>;
   /** 동일 window 내 pending team_chat 인앱 알림 존재 여부(rfp 단위 dedupe). */
   hasPendingTeamNotification(userId: string, rfpId: string, windowStart: Date, tx?: Tx): Promise<boolean>;
   /** 소유권 검증 + type 조회 (markRead/retryEmail). 없거나 타인 것이면 undefined. */

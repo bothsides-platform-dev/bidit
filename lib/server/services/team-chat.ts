@@ -18,6 +18,7 @@ import { emitAfterCommit } from '@/lib/server/notifications/dispatch';
 import { notify } from '@/lib/server/notifications/notify';
 import { flushAfterCommit } from '@/lib/server/outbox/post-commit';
 import { teamDigestDedupeKey, teamDigestWindowEnd } from '@/lib/server/outbox/team-digest';
+import { teamThreadLink } from '@/lib/chat/thread-link';
 import { canWorkspaceAccessRfp } from '@/lib/server/rfp-access';
 import { extractMentions, mentionsToPlainText } from '@/lib/utils/team-mentions';
 import type { Notification } from '@/lib/types/notification';
@@ -196,7 +197,7 @@ export class TeamChatService {
                 type: 'team_chat.mention',
                 title: `${authorName}님이 회원님을 언급했어요`,
                 body: preview,
-                linkUrl: `/messages?t=${input.rfpId}`,
+                linkUrl: teamThreadLink(input.rfpId),
               })),
             );
           }
@@ -209,7 +210,7 @@ export class TeamChatService {
                 type: 'team_chat.message',
                 title: `${authorName}님의 팀 메시지`,
                 body: preview,
-                linkUrl: `/messages?t=${input.rfpId}`,
+                linkUrl: teamThreadLink(input.rfpId),
               })),
             );
           }
