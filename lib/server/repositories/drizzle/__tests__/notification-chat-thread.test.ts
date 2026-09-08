@@ -12,8 +12,9 @@ import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 
 import { createPgliteDb } from '@/lib/db/client-pglite';
+import { notifications } from '@/lib/db/schema';
 import { teamThreadLink } from '@/lib/chat/thread-link';
-import { DrizzleNotificationRepository } from '../notification';
+import { DrizzleNotificationRepository, MARK_READ_LOOKBACK_DAYS } from '../notification';
 import { seedBuyerWorkspace, seedMembership, seedUser } from './_seed';
 import type { Notification } from '@/lib/types/notification';
 
@@ -137,6 +138,38 @@ describe('DrizzleNotificationRepository.markChatThreadRead', () => {
 
     const rows = await repo.findRecentForUser(user.id, otherWs.id, 10);
     expect(rows[0].status).toBe('pending');
+  });
+
+  it('only reaches back MARK_READ_LOOKBACK_DAYS (파티션 프루닝 하한)', async () => {
+    // notifications 는 created_at 으로 RANGE 파티션된다. 하한이 없으면 이 UPDATE
+    // 가 모든 월별 자식 테이블을 열고, 이 쿼리는 이제 '마운트 1회'가 아니라
+    // 메시지마다 도는 핫패스다.
+    //
+    // 대가는 명시적이다 — 하한보다 오래된 안 읽은 알림은 여기서 안 걷힌다.
+    // 사용자는 알림함에서 직접 지울 수 있다(markAllRead 는 하한이 없다).
+    const { db, repo, user, ws } = await setup();
+    const stale = new Date(Date.now() - (MARK_READ_LOOKBACK_DAYS + 1) * 24 * 60 * 60 * 1000);
+    const fresh = chatNotification({ userId: user.id, workspaceId: ws.id, linkUrl: CONV_A });
+    await repo.save(fresh);
+    await db.insert(notifications).values({
+      id: randomUUID(),
+      userId: user.id,
+      workspaceId: ws.id,
+      type: 'chat.message',
+      title: '오래된 알림',
+      body: '',
+      channel: 'in_app',
+      status: 'queued',
+      linkUrl: CONV_A,
+      createdAt: stale,
+    });
+
+    await repo.markChatThreadRead(user.id, ws.id, CONV_A);
+
+    const rows = await repo.findRecentForUser(user.id, ws.id, 10);
+    const byTitle = new Map(rows.map((r) => [r.title, r.status]));
+    expect(byTitle.get('새 메시지')).toBe('read');
+    expect(byTitle.get('오래된 알림')).toBe('pending');
   });
 
   it('does not move readAt on a row that was already read', async () => {
