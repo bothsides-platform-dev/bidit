@@ -17,7 +17,8 @@ import type {
   WorkspaceType,
 } from '@/lib/types/workspace';
 import type { User } from '@/lib/types/user';
-import type { WorkspaceRepo, Tx, TeamMember, WorkspaceDisplay } from '../types';
+import type { WorkspaceRepo, Tx, TeamMember } from '../types';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
 
 /** ilike 메타문자 이스케이프 (사용자 입력 q 용). */
 function escapeIlike(s: string): string {

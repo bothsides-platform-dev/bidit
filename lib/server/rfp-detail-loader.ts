@@ -17,7 +17,7 @@ import {
   getWorkspaceRepo,
   getRfpRequoteRequestRepo,
 } from './repositories/factory';
-import type { WorkspaceDisplay } from './repositories/types';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
 import { toQuoteTemplateOption } from './quote-template-option';
 import type { QuoteTemplateOption } from '@/lib/types/bid';
 import { pgDealRoomShowsBidWizard } from '@/lib/rfp/pg-bid-wizard-visibility';

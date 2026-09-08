@@ -38,6 +38,7 @@ import type {
 } from '@/lib/types/signing';
 import type { ContractArchive } from '@/lib/types/contract-archive';
 import type { WorkspaceNameChangeRequest } from '@/lib/types/workspace-name-change';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
 
 // Tx union — postgres-js DB, pglite DB, or a transactional handle from either.
 // `any` generics are localised here so individual method signatures stay clean.
@@ -595,10 +596,6 @@ export interface PgRequestRepo {
 }
 
 // ── Workspace ─────────────────────────────────────────────────────────
-/** 표시용 워크스페이스 신원 — 정의는 `lib/types/workspace` 소유(클라이언트도 쓴다). */
-import type { WorkspaceDisplay } from '@/lib/types/workspace';
-export type { WorkspaceDisplay };
-
 export type TeamMember = { userId: string; name: string; joinedAt: string; avatarUpdatedAt: string | null };
 
 export interface PresenceAccessRepo {
