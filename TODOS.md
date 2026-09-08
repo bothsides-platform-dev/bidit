@@ -177,6 +177,16 @@ v0.4.35.0 부터 이 차이가 **사용자에게 보인다**: `WorkspaceLogoForm
 ### 선정 후 구매사 담당자(createdBy) 탈퇴 시 승자 PG가 빈 딜룸 (P3)
 선정 연락처 교환(`CounterpartyContactCard`)은 `findContactById`가 fail-closed라, 구매사 담당자(RFP `createdBy`)가 탈퇴/시스템계정이면 `buyerContact=null`이 된다. 승자 PG 분기는 `awardedToMe && buyerContact`로 카드를, `awarded && !awardedToMe`로 미선정 안내를 그리므로 — 승자인데 buyerContact만 null이면 카드도 안내도 안 떠 빈 화면이 된다(드묾·누출 아님·정상 fail-closed). 후속: 연락처 없음 안내 폴백 또는 워크스페이스 대표 담당자 폴백 검토. (발견: /ship 적대 리뷰 2026-06-27)
 
+### `WorkspaceAvatar.workspaceId` 는 아직 optional — 로고 누락의 남은 한 축 (P4)
+v0.9.x 에서 `logoUpdatedAt` 을 필수로 올려 "배선을 잊음"과 "로고 없음"을 구분되게 만들었지만
+(`Counterparty`·`WorkspaceAvatar`), 같은 컴포넌트의 `workspaceId` 는 여전히 optional 이다.
+img 분기는 **둘 다** 있어야 켜지므로, 로고 버전만 넘기고 id 를 빠뜨리면 똑같이 조용히
+이니셜로 떨어진다. 현재 실피해는 없다 — 호출부 전수(7/7)가 id 를 넘긴다. 닫지 않은 이유는
+`workspaceId` 없는 "이니셜 전용 아바타"가 의도된 용법이고(`WorkspaceAvatar.test.tsx` 가
+그 분기를 명시적으로 검증한다) 그것까지 없애려면 props 를 `WorkspaceDisplay` 하나 또는
+`{name}` 유니온으로 바꿔야 해서, 이번 변경의 범위를 넘는다. 닫는 법 후보: prop 을
+`identity: WorkspaceDisplay | { name: string }` 판별 유니온으로. (발견: 로고 누락 구조 수정 작업)
+
 ## Settings / Account
 
 ### 설정 페이지 `canEditWorkspace` 의 미승인-admin 축이 무테스트다 (P2)
@@ -1206,6 +1216,32 @@ PG 가입 플로우도 `BizLookupField` 를 사용하며 현재 `blockedStatuses
 v0.4.54.0 이 `verifyEmailAction` 의 **reject** 를 잡아 오류 화면 + 다시 시도로 바꿨지만, 탈출 조건이 "프로미스가 settle 됐다" 하나뿐이다. 요청이 거절되지도 응답하지도 않고 **매달려 있으면**(연결은 수립됐는데 응답을 안 주는 캡티브 포털·중간 프록시) `state` 는 `'loading'` 에 머물고 원래 증상인 무한 스피너가 그대로 재현된다 — `app/(public)/auth/verify/page.tsx` 의 마운트 효과(:38-54)와 `retry`(:59-72) 어느 쪽에도 `AbortController`·`Promise.race`·타임아웃이 없다. 끊긴 연결은 보통 reject 로 떨어져 이미 닫힌 경로라 남은 트리거는 이 "블랙홀" 한 종류뿐이고, 그래서 P4 다. 닫는 법은 두 호출부를 공통 타임아웃으로 감싸 만료 시 `network_error` 로 보내는 것인데, **몇 초로 할지가 제품 판단**이라 값 없이 넣지 않았다(짧으면 느린 모바일에서 멀쩡한 인증을 죽인다). (발견: /ship 컷 감사 adversarial 2026-08-13, v0.4.54.0)
 
 ## Workspace / Members
+
+### 워크스페이스 로고 신선도에 출처가 둘이다 — 같은 화면에서 어긋날 수 있다 (P3)
+`logoUpdatedAt` 을 읽는 경로가 두 갈래다. **컬럼**(`workspaces.logo_updated_at`)을 읽는 쪽이
+다수파이고(`getDisplayInfo`·`findDisplayInfoByIds`·`search`·`listCanonicalPgWorkspaces`),
+**블롭 테이블**(`workspace_logo_blobs.updated_at`)을 조회하는 쪽은 `findById` 하나다
+(`lib/server/repositories/drizzle/workspace.ts` 의 별도 SELECT). 쓰기는
+`app/api/workspace/[id]/avatar/route.ts` 가 **트랜잭션 없이 두 문장으로** 한다 —
+`logoRepo.upsert()` 다음 `setLogoUpdatedAt()`, 삭제는 `remove()` 다음 `setLogoUpdatedAt(null)`.
+둘 사이에서 실패하면 두 출처가 갈린다.
+
+**이 갈라짐 자체는 선존재**지만, 로고 신원 수정(v0.9.2.0)이 PG 딜룸 로더를 `findById` →
+`getDisplayInfo` 로 옮기면서 **한 화면 안의 불일치**를 새로 만들었다: PG 딜룸은
+`RfpBriefPanel`/`BidContextStrip`(이제 컬럼)과 채팅 레일(`conversationLoaders.ts` 의
+`loadConversationThread` → 여전히 `findById`, 블롭)이 **같은 구매사 워크스페이스**를 나란히
+그린다. 그 전에는 둘 다 `findById` 라 항상 일치했다. 부분 실패 후 사용자는 브리프에는
+이니셜, 바로 옆 채팅에는 로고를 보게 된다.
+
+되돌리지 않은 이유: 컬럼이 다수파 출처이고 `findById` 가 예외다(게다가 `findById` 는
+멤버·bizProfile 까지 하이드레이트하는 무거운 조회다). 방향은 컬럼이 맞다.
+
+닫는 법(둘 중 하나, 둘 다 이 PR 범위 밖):
+① **쓰기를 원자화** — 근본 원인. 단 API 라우트에서 `getDb()` 를 부르면 repo-boundary 가드에
+   걸리므로(`lib/server/services/**` 밖 호출 금지) 로고 쓰기를 서비스로 올려야 한다.
+② **읽기를 통일** — `conversationLoaders.ts` 의 남은 `findById` 로고 소비처를
+   `getDisplayInfo`/`findDisplayInfoByIds` 로 옮긴다. 더 좁지만 ①을 남긴다.
+①이 원인에 가깝다. (발견: v0.9.2.0 /ship red-team 리뷰)
 
 ### 워크스페이스 정렬 변경이 chat.ts/shell-access.ts의 순서 의존 로직에 준 부수효과 (P4)
 사이드바 워크스페이스 스위처 드랍다운을 PG우선+이름순으로 정렬하려고 `WorkspaceRepo.listForUser`/`listAllWorkspacesForMaster`의 `ORDER BY`를 리포지토리 레이어에서 바꿨다(v0.4.28.2). 이 두 메서드 결과가 표시 목적 외에도 쓰이는 곳이 있다: ① `chat.ts`의 `counterpartyEmail`로 채팅을 시작하는 경로가 `memberships.find(m => m.type === wantType)`로 첫 매칭 워크스페이스를 고르는데, 동일 타입 멤버십이 여러 개인 유저는 이제 가입순 대신 이름순으로 뽑힌다. ② `shell-access.ts`의 `workspaces.find(...) ?? workspaces[0]` fallback(세션의 workspaceId가 현재 멤버십 목록에 없는 드문 경우)도 동일하게 영향받는다. 두 경우 모두 동일 타입 멤버십이 여러 개인 유저에게만 해당하는 좁은 엣지 케이스라 리스크를 감수하고 그대로 배포하기로 결정(/ship 적대 리뷰에서 발견, 사용자 확인 후 수용). 후속: 필요해지면 정렬을 리포지토리 레이어 대신 WorkspaceSwitcher 클라이언트 쪽으로 옮겨 두 소비처의 원래 순서 의미를 보존. (발견: /ship 적대 리뷰 2026-07-29)

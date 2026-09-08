@@ -3,6 +3,8 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MetricComparePopover, type CompareRow } from '../MetricComparePopover';
 import type { Bid } from '@/lib/types/bid';
+import { wsById } from '@/lib/types/__tests__/_workspace-fixtures';
+
 
 beforeAll(() => {
   if (!('ResizeObserver' in globalThis)) {
@@ -39,7 +41,7 @@ const rows: CompareRow[] = [
   { bid: makeBid('b-nice', 'pg-nice'), isBest: false, valueText: '2.80%' },
 ];
 
-const pgWsNameMap = { 'pg-toss': '토스페이먼츠', 'pg-kg': 'KG이니시스', 'pg-nice': '나이스페이' };
+const pgWsById = wsById({ 'pg-toss': '토스페이먼츠', 'pg-kg': 'KG이니시스', 'pg-nice': '나이스페이' });
 
 afterEach(cleanup);
 
@@ -51,7 +53,7 @@ describe('MetricComparePopover', () => {
         label="카드 수수료"
         rows={rows}
         activeBidId="b-kg"
-        pgWsNameMap={pgWsNameMap}
+        pgWsById={pgWsById}
         onSelect={vi.fn()}
       >
         <span>2.50%</span>
@@ -73,7 +75,7 @@ describe('MetricComparePopover', () => {
         label="카드 수수료"
         rows={rows}
         activeBidId="b-kg"
-        pgWsNameMap={pgWsNameMap}
+        pgWsById={pgWsById}
         onSelect={vi.fn()}
       >
         <span>2.50%</span>
@@ -94,7 +96,7 @@ describe('MetricComparePopover', () => {
         label="카드 수수료"
         rows={rows}
         activeBidId="b-kg"
-        pgWsNameMap={pgWsNameMap}
+        pgWsById={pgWsById}
         baselineText="2.8%"
         onSelect={vi.fn()}
       >
@@ -115,7 +117,7 @@ describe('MetricComparePopover', () => {
         label="카드 수수료"
         rows={rows}
         activeBidId="b-kg"
-        pgWsNameMap={pgWsNameMap}
+        pgWsById={pgWsById}
         onSelect={onSelect}
       >
         <span>2.50%</span>

@@ -24,6 +24,7 @@ import { pgInviteTour, pgBriefTour, pgWriteTour } from './tours';
 import {
   tutorialBuyerRfp,
   tutorialBuyerName,
+  tutorialBuyer,
   tutorialBidDraftSeed,
 } from '@/lib/onboarding/tutorial-fixtures';
 
@@ -74,7 +75,7 @@ export function PgTutorialFlow() {
       {phase === 'brief' && (
         <>
           <div className="px-6 py-6">
-            <RfpBriefPanel rfp={tutorialBuyerRfp} buyerName={tutorialBuyerName} />
+            <RfpBriefPanel rfp={tutorialBuyerRfp} buyer={tutorialBuyer} />
             <div className="mt-6">
               <Button
                 data-coachmark="tutorial-brief-cta"
@@ -99,7 +100,7 @@ export function PgTutorialFlow() {
         <>
           <BidWizard
             rfp={tutorialBuyerRfp}
-            buyerName={tutorialBuyerName}
+            buyer={tutorialBuyer}
             initialDraft={tutorialBidDraftSeed}
             onSampleSubmit={handleComplete}
           />

@@ -53,6 +53,8 @@ vi.mock('motion/react', () => ({
 }));
 
 import { BidWizard } from '../BidWizard';
+import { buyerOf } from '@/lib/types/__tests__/_workspace-fixtures';
+
 
 const rfp = {
   id: 'rfp-uuid',
@@ -83,7 +85,7 @@ describe('BidWizard 게스트(랜딩 데모) 제출', () => {
   it('onGuestSubmit 이 있으면 서버 제출 액션 대신 콜백을 호출한다', async () => {
     const onGuest = vi.fn();
     const user = userEvent.setup();
-    render(<BidWizard rfp={rfp} buyerName="데모 쇼핑몰" onGuestSubmit={onGuest} />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('데모 쇼핑몰')} onGuestSubmit={onGuest} />);
     await driveToSubmit(user);
 
     await waitFor(() => expect(onGuest).toHaveBeenCalledTimes(1));

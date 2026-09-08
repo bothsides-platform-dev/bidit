@@ -29,6 +29,7 @@ import { WizardProgressBar } from '@/components/rfp/WizardProgressBar';
 import { BID_WIZARD_STEPS, SERVER_ERROR_STEP } from './bid-wizard-steps';
 import { getBidWizardValidity, getFirstIncompleteBidStep, deriveAnyFeeFilled } from './bid-wizard-validation';
 import { BidContextStrip } from './BidContextStrip';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
 import { type ProposalState } from './BidStepProposal';
 import { BidWizardProvider, type BidWizardContextValue } from './bid-wizard-context';
 import { BidStepSettlementContainer } from './BidStepSettlementContainer';
@@ -41,7 +42,7 @@ const TOTAL_STEPS = BID_WIZARD_STEPS.length;
 
 type Props = {
   rfp: PgRfpDetailData['rfp'];
-  buyerName: string;
+  buyer: WorkspaceDisplay;
   templates?: QuoteTemplateOption[];
   /** PG 워크스페이스에 등록된 재사용 계약서 템플릿 — 검토·발송 단계에서 선택할 수 있다. */
   signingTemplates?: SigningTemplateOption[];
@@ -99,7 +100,7 @@ export function bidToDraft(b: NonNullable<PgRfpDetailData['myBid']>): BidDraft {
   };
 }
 
-export function BidWizard({ rfp, buyerName, templates = [], signingTemplates, initialBid, initialDraft, onGuestSubmit, onSampleSubmit }: Props) {
+export function BidWizard({ rfp, buyer, templates = [], signingTemplates, initialBid, initialDraft, onGuestSubmit, onSampleSubmit }: Props) {
   const router = useRouter();
   const rfpId = rfp.id;
   const requiredPaymentMethods = rfp.requiredPaymentMethods;
@@ -425,7 +426,7 @@ export function BidWizard({ rfp, buyerName, templates = [], signingTemplates, in
 
       <BidWizardProvider value={wizardContext}>
       <div className="border border-[var(--md-sys-color-outline-variant)] rounded-[8px] overflow-hidden h-full flex flex-col">
-        <BidContextStrip buyerName={buyerName} rfp={rfp} currentStep={currentStep} feeInputMethods={feeInputMethods} />
+        <BidContextStrip buyer={buyer} rfp={rfp} currentStep={currentStep} feeInputMethods={feeInputMethods} />
 
         <div className="flex flex-1 min-h-0">
           <WizardStepSidebar

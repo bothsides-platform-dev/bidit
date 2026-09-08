@@ -7,7 +7,7 @@ import { PresenceDot } from '@/components/presence/PresenceDot';
 type Props = {
   name: string;
   workspaceId: string;
-  logoUpdatedAt?: string | null;
+  logoUpdatedAt: string | null;
   size?: 'sm' | 'md';
 };
 

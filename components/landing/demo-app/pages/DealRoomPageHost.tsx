@@ -5,7 +5,7 @@ import { FocusComparison } from '@/components/rfp/comparison/FocusComparison';
 import { Button } from '@/components/primitives/Button';
 import {
   demoCompareBids,
-  demoPgNameMap,
+  demoPgWsById,
   demoCompareCurrent,
   demoBuyerGrade,
 } from '../demo-app-fixtures';
@@ -21,8 +21,7 @@ export function DealRoomPageHost() {
       <DealRoomProvider>
         <FocusComparison
           bids={demoCompareBids}
-          pgWsNameMap={demoPgNameMap}
-          pgWsLogoUpdatedAtMap={{}}
+          pgWsById={demoPgWsById}
           current={demoCompareCurrent}
           rfpStatus="sent"
           awardedBidId={null}

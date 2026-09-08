@@ -82,8 +82,7 @@ function buildData(over?: Partial<PgRfpDetailData>): PgRfpDetailData {
   return {
     rfp: baseRfp,
     myBid: undefined,
-    buyerName: '(주)테스트',
-    buyerLogoUpdatedAt: null,
+    buyer: { id: 'ws-buyer', name: '(주)테스트', type: 'buyer' as const, logoUpdatedAt: null },
     quoteTemplates: [],
     pendingRequote: null,
     awardedToMe: false,

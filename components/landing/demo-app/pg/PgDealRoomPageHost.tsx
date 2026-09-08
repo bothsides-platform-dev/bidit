@@ -6,7 +6,7 @@ import { DealRoomActionRail, type RailAction } from '@/components/deal-room/Deal
 import { DealRoomCenter, type DealRoomTab } from '@/components/deal-room/DealRoomCenter';
 import { RfpBriefPanel } from '@/components/inbox/RfpBriefPanel';
 import { BidWizard } from '@/components/inbox/bid-wizard/BidWizard';
-import { demoPgDealRfp, demoPgBuyerName } from './pg-demo-fixtures';
+import { demoPgDealRfp, demoPgBuyer } from './pg-demo-fixtures';
 
 // 데모 딜룸 — 실제 액션레일 + 탭(견적 작성=BidWizard guest / 요청 조건=RfpBriefPanel)을 fixture로.
 // 게스트 제출은 서버 액션 대신 onGuestSubmit(가입 유도)로 빠진다.
@@ -18,13 +18,13 @@ export function PgDealRoomPageHost({ onGuestSubmit }: { onGuestSubmit: () => voi
       id: 'write',
       label: '견적 작성',
       content: (
-        <BidWizard rfp={demoPgDealRfp} buyerName={demoPgBuyerName} onGuestSubmit={onGuestSubmit} />
+        <BidWizard rfp={demoPgDealRfp} buyer={demoPgBuyer} onGuestSubmit={onGuestSubmit} />
       ),
     },
     {
       id: 'request',
       label: '요청 조건',
-      content: <RfpBriefPanel rfp={demoPgDealRfp} buyerName={demoPgBuyerName} />,
+      content: <RfpBriefPanel rfp={demoPgDealRfp} buyer={demoPgBuyer} />,
     },
   ];
 

@@ -72,7 +72,7 @@ describe('RfpInviteManager — 인라인 칩 추가', () => {
     render(
       <RfpInviteManager
         rfpId="rfp-1"
-        invitations={[{ wsId: 'pg-a', wsName: 'KG이니시스', status: 'draft' }]}
+        invitations={[{ ws: { id: 'pg-a', name: 'KG이니시스', type: 'pg', logoUpdatedAt: null }, status: 'draft' }]}
         canEdit
       />,
     );
@@ -103,7 +103,7 @@ describe('RfpInviteManager — 인라인 칩 추가', () => {
     render(
       <RfpInviteManager
         rfpId="rfp-1"
-        invitations={[{ wsId: 'pg-a', wsName: 'KG이니시스', status: 'draft' }]}
+        invitations={[{ ws: { id: 'pg-a', name: 'KG이니시스', type: 'pg', logoUpdatedAt: null }, status: 'draft' }]}
         canEdit
       />,
     );
@@ -122,8 +122,8 @@ describe('RfpInviteManager — 인라인 칩 추가', () => {
       <RfpInviteManager
         rfpId="rfp-1"
         invitations={[
-          { wsId: 'pg-a', wsName: 'KG이니시스', status: 'draft' },
-          { wsId: 'pg-b', wsName: 'NHN KCP', status: 'sent' },
+          { ws: { id: 'pg-a', name: 'KG이니시스', type: 'pg', logoUpdatedAt: null }, status: 'draft' },
+          { ws: { id: 'pg-b', name: 'NHN KCP', type: 'pg', logoUpdatedAt: null }, status: 'sent' },
         ]}
         canEdit
       />,
@@ -137,7 +137,7 @@ describe('RfpInviteManager — 인라인 칩 추가', () => {
     render(
       <RfpInviteManager
         rfpId="rfp-1"
-        invitations={[{ wsId: 'pg-a', wsName: 'KG이니시스', status: 'draft' }]}
+        invitations={[{ ws: { id: 'pg-a', name: 'KG이니시스', type: 'pg', logoUpdatedAt: null }, status: 'draft' }]}
         canEdit
       />,
     );
@@ -163,7 +163,7 @@ describe('RfpInviteManager — 인라인 칩 추가', () => {
     render(
       <RfpInviteManager
         rfpId="rfp-1"
-        invitations={[{ wsId: 'pg-a', wsName: 'KG이니시스', status: 'draft' }]}
+        invitations={[{ ws: { id: 'pg-a', name: 'KG이니시스', type: 'pg', logoUpdatedAt: null }, status: 'draft' }]}
         canEdit
       />,
     );
@@ -177,7 +177,7 @@ describe('RfpInviteManager — 인라인 칩 추가', () => {
     render(
       <RfpInviteManager
         rfpId="rfp-1"
-        invitations={[{ wsId: 'pg-a', wsName: 'KG이니시스', status: 'draft' }]}
+        invitations={[{ ws: { id: 'pg-a', name: 'KG이니시스', type: 'pg', logoUpdatedAt: null }, status: 'draft' }]}
         canEdit
       />,
     );

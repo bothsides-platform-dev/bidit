@@ -8,6 +8,7 @@
 import type { RFP } from '@/lib/types/rfp';
 import type { Bid, MerchantTier, PaymentMethod, TierRates } from '@/lib/types/bid';
 import type { BizProfile } from '@/lib/types/biz-profile';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
 import type { PgWorkspace } from '@/components/rfp/RfpStep3PgSelect';
 // 타입 전용 import — useBidDraft는 'use client' 모듈이지만 type-only라 client-safe 유지.
 import type { BidDraft } from '@/components/inbox/useBidDraft';
@@ -59,6 +60,22 @@ export const tutorialPgNames: Record<string, string> = {
   [TUTORIAL_PG_IDS[0]]: '튜토리얼페이 A',
   [TUTORIAL_PG_IDS[1]]: '튜토리얼페이 B',
   [TUTORIAL_PG_IDS[2]]: '튜토리얼페이 C',
+};
+
+/** pgWsId → 표시 신원 — 아바타를 그리는 화면은 이름 맵이 아니라 이 맵을 받는다. */
+export const tutorialPgWsById: Record<string, WorkspaceDisplay> = Object.fromEntries(
+  TUTORIAL_PG_IDS.map((id) => [
+    id,
+    { id, name: tutorialPgNames[id]!, type: 'pg' as const, logoUpdatedAt: null },
+  ]),
+);
+
+/** 튜토리얼 구매사 신원 — RfpBriefPanel·BidWizard 가 통째로 받는다. */
+export const tutorialBuyer: WorkspaceDisplay = {
+  id: TUTORIAL_BUYER_WS_ID,
+  name: tutorialBuyerName,
+  type: 'buyer',
+  logoUpdatedAt: null,
 };
 
 /** RfpCreateWizard의 pgList prop 타입 — Step3 PG 선택 화면용. */

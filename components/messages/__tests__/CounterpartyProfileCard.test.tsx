@@ -44,7 +44,7 @@ beforeEach(() => {
 
 import { CounterpartyProfileCard } from '../CounterpartyProfileCard';
 
-const pg = { name: '토스페이먼츠', type: 'pg' as const, workspaceId: 'ws-pg-1' };
+const pg = { name: '토스페이먼츠', type: 'pg' as const, workspaceId: 'ws-pg-1', logoUpdatedAt: null };
 
 describe('CounterpartyProfileCard', () => {
   it('variant=profile 트리거에 상대 이름이 보인다', () => {
@@ -89,7 +89,7 @@ describe('CounterpartyProfileCard', () => {
     const user = userEvent.setup();
     render(
       <CounterpartyProfileCard
-        counterparty={{ name: '미상회사', type: 'buyer' }}
+        counterparty={{ name: '미상회사', type: 'buyer', logoUpdatedAt: null }}
         variant="profile"
       />,
     );

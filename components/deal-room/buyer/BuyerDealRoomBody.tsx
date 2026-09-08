@@ -50,8 +50,7 @@ export function BuyerDealRoomBody({ data }: { data: BuyerRfpDetailData }) {
     rfp,
     bids,
     rfpFiles,
-    pgWsNameMap,
-    pgWsLogoUpdatedAtMap,
+    pgWsById,
     inviteList,
     pendingRequests,
     canEdit,
@@ -77,7 +76,7 @@ export function BuyerDealRoomBody({ data }: { data: BuyerRfpDetailData }) {
   const awardedPgWsId = rfp.awardedBidId
     ? bids.find((b) => b.id === rfp.awardedBidId)?.pgWsId
     : undefined;
-  const pgName = (wsId?: string) => (wsId ? (pgWsNameMap[wsId] ?? wsId) : '');
+  const pgName = (wsId?: string) => (wsId ? (pgWsById[wsId]?.name ?? wsId) : '');
   const canAward = rfp.status === 'sent';
   const isOpenStatus = rfp.status === 'sent';
 
@@ -113,8 +112,7 @@ export function BuyerDealRoomBody({ data }: { data: BuyerRfpDetailData }) {
           )}
           <FocusComparison
             bids={bids}
-            pgWsNameMap={pgWsNameMap}
-            pgWsLogoUpdatedAtMap={pgWsLogoUpdatedAtMap}
+            pgWsById={pgWsById}
             current={{
               feeRate: rfp.currentFeeRate,
               settlementCycle: rfp.currentSettlementCycle,
