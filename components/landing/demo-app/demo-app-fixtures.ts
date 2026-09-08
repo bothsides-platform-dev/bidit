@@ -4,6 +4,7 @@ import type { RFP } from '@/lib/types/rfp';
 import type { Bid, MerchantTier, PaymentMethod } from '@/lib/types/bid';
 import type { Dashboard } from '@/lib/server/dashboard/buildDashboard';
 import type { InboxListItem } from '@/lib/server/actions/chat/inboxLoader';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
 import { fixtureCurrent } from '@/components/landing/demo-fixtures';
 
 const now = Date.now();
@@ -47,6 +48,14 @@ const demoPgNames: Record<string, string> = {
   'demo-pg-2': 'NHN KCP',
 };
 export const demoPgNameMap = demoPgNames;
+
+/** pgWsId → 표시 신원(데모는 로고 없음) — 비교 화면이 이름 맵 대신 이 맵을 받는다. */
+export const demoPgWsById: Record<string, WorkspaceDisplay> = Object.fromEntries(
+  Object.entries(demoPgNames).map(([id, name]) => [
+    id,
+    { id, name, type: 'pg' as const, logoUpdatedAt: null },
+  ]),
+);
 
 function bid(o: {
   id: string; pgWsId: string; card: number; settleCycle: string; settleLimit: number;

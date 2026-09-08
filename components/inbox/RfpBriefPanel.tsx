@@ -2,16 +2,19 @@ import { Chip } from '@/components/primitives/Chip';
 import { Label } from '@/components/primitives/Label';
 import { InfoTip } from '@/components/ui/info-tip';
 import { CounterpartyProfileCard } from '@/components/messages/CounterpartyProfileCard';
+import { toCounterparty } from '@/components/messages/types';
 import { AttachmentPreviewList } from '@/components/attachments/AttachmentPreviewList';
 import { MERCHANT_TIER_LABELS } from '@/lib/types/bid';
 import { formatDate, formatDeadline, formatKrwReadable, formatKrwField, formatFeeRateDisplay } from '@/lib/utils/format';
 import { CONTRACT_TYPE_LABELS, CONTRACT_TYPE_COLOR } from '@/lib/types/rfp';
 import type { RFP } from '@/lib/types/rfp';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
 import { Divider } from '@/components/primitives/Divider';
 
-type Props = { rfp: RFP; buyerName: string };
+// buyer 는 신원 한 덩어리로 받는다 — 상호명 문자열만 받던 시절 아바타가 로고를 잃었다.
+type Props = { rfp: RFP; buyer: WorkspaceDisplay };
 
-export function RfpBriefPanel({ rfp, buyerName }: Props) {
+export function RfpBriefPanel({ rfp, buyer }: Props) {
   const bizProfile = rfp.bizProfile;
   const bizNoMissing = !bizProfile?.bizNo;
   const grade = bizProfile?.grade;
@@ -61,13 +64,13 @@ export function RfpBriefPanel({ rfp, buyerName }: Props) {
           <Divider />
           <CounterpartyProfileCard
             variant="avatar"
-            counterparty={{ name: buyerName, type: 'buyer', workspaceId: rfp.buyerWsId }}
+            counterparty={toCounterparty(buyer)}
             rfpContext={{ id: rfp.id, title: rfp.title }}
           />
         </div>
         <div className="divide-y divide-[var(--md-sys-color-outline-variant)] border-t border-[var(--md-sys-color-outline-variant)]">
           {[
-            ['상호명', buyerName],
+            ['상호명', buyer.name],
             ['사업자번호', bizProfile?.bizNo ?? '미입력'],
             ['대표자', '—'],
           ].map(([label, value]) => (

@@ -48,6 +48,8 @@ vi.mock('@/lib/server/actions/rfp/requestRequoteAction', () => ({ requestRequote
 import { FocusComparison } from '../FocusComparison';
 import { DealRoomProvider, useDealRoom } from '@/components/deal-room/DealRoomContext';
 import type { Bid } from '@/lib/types/bid';
+import { wsById } from '@/lib/types/__tests__/_workspace-fixtures';
+
 
 // FocusComparison 은 이제 DealRoomProvider 안에서 포커스 PG 를 publish 한다. 기본 render 를
 // 프로바이더로 감싸고, Probe 가 컨텍스트의 counterparty 를 캡처해 publish 를 검증한다.
@@ -94,8 +96,7 @@ const kg = makeBid({ id: 'b-kg', pgWsId: 'pg-kg', settleCycle: 'D+2', settleLimi
 
 const baseProps = {
   bids: [kg, toss], // intentionally not pre-sorted
-  pgWsNameMap: { 'pg-toss': '토스페이먼츠', 'pg-kg': 'KG이니시스' },
-  pgWsLogoUpdatedAtMap: {} as Record<string, string | null>,
+  pgWsById: wsById({ 'pg-toss': '토스페이먼츠', 'pg-kg': 'KG이니시스' }),
   current: { feeRate: '2.8%' },
   rfpStatus: 'sent',
   awardedBidId: null,
@@ -246,8 +247,7 @@ describe('FocusComparison — requote CTA + status chips', () => {
     render(
       <FocusComparison
         bids={[bid]}
-        pgWsNameMap={{ 'pg-1': 'OO페이' }}
-        pgWsLogoUpdatedAtMap={{}}
+        pgWsById={wsById({ 'pg-1': 'OO페이' })}
         current={{ feeRate: null, settlementCycle: null, settlementLimit: null, guaranteeInsurance: null }}
         rfpStatus="sent"
         awardedBidId={null}
@@ -267,8 +267,7 @@ describe('FocusComparison — requote CTA + status chips', () => {
     render(
       <FocusComparison
         bids={[bid]}
-        pgWsNameMap={{ 'pg-1': 'OO페이' }}
-        pgWsLogoUpdatedAtMap={{}}
+        pgWsById={wsById({ 'pg-1': 'OO페이' })}
         current={{ feeRate: null, settlementCycle: null, settlementLimit: null, guaranteeInsurance: null }}
         rfpStatus="sent"
         awardedBidId={null}
@@ -287,8 +286,7 @@ describe('FocusComparison — requote CTA + status chips', () => {
     render(
       <FocusComparison
         bids={[bid]}
-        pgWsNameMap={{ 'pg-1': 'OO페이' }}
-        pgWsLogoUpdatedAtMap={{}}
+        pgWsById={wsById({ 'pg-1': 'OO페이' })}
         current={{ feeRate: null }}
         rfpStatus="sent"
         awardedBidId={null}
@@ -339,13 +337,13 @@ describe('FocusComparison — 채팅 레일 상대 publish', () => {
   });
 });
 
-describe('FocusComparison — pgWsLogoUpdatedAtMap → BidTabStrip 로고 전달', () => {
-  it('pgWsLogoUpdatedAtMap에 값이 있으면 BidTabStrip이 WorkspaceAvatar 이미지를 렌더한다', () => {
+describe('FocusComparison — pgWsById → BidTabStrip 로고 전달', () => {
+  it('pgWsById에 값이 있으면 BidTabStrip이 WorkspaceAvatar 이미지를 렌더한다', () => {
     const logoTs = '2026-01-01T00:00:00.000Z';
     render(
       <FocusComparison
         {...baseProps}
-        pgWsLogoUpdatedAtMap={{ 'pg-toss': logoTs, 'pg-kg': null }}
+        pgWsById={wsById({ 'pg-toss': '토스페이먼츠', 'pg-kg': 'KG이니시스' }, { 'pg-toss': logoTs })}
       />,
     );
     const expectedSrc = `/api/workspace/pg-toss/avatar?v=${Date.parse(logoTs)}`;
@@ -353,13 +351,13 @@ describe('FocusComparison — pgWsLogoUpdatedAtMap → BidTabStrip 로고 전달
     expect(img).not.toBeNull();
   });
 
-  it('pgWsLogoUpdatedAtMap이 비어 있으면 로고 이미지가 렌더되지 않는다', () => {
-    render(<FocusComparison {...baseProps} pgWsLogoUpdatedAtMap={{}} />);
+  it('pgWsById에 로고 버전이 없으면 로고 이미지가 렌더되지 않는다', () => {
+    render(<FocusComparison {...baseProps} pgWsById={wsById({ 'pg-toss': '토스페이먼츠', 'pg-kg': 'KG이니시스' })} />);
     expect(document.querySelector('img[src*="/api/workspace/"]')).toBeNull();
   });
 });
 
-describe('FocusComparison — pgWsLogoUpdatedAtMap → CounterpartyProfileCard 로고 전달', () => {
+describe('FocusComparison — pgWsById → CounterpartyProfileCard 로고 전달', () => {
   beforeEach(() => {
     cardSpy.lastCounterparty = null;
   });
@@ -367,7 +365,7 @@ describe('FocusComparison — pgWsLogoUpdatedAtMap → CounterpartyProfileCard �
   it('활성 PG의 logoUpdatedAt을 CounterpartyProfileCard에 전달한다', () => {
     const logoTs = '2026-01-01T00:00:00.000Z';
     render(
-      <FocusComparison {...baseProps} pgWsLogoUpdatedAtMap={{ 'pg-toss': logoTs, 'pg-kg': null }} />,
+      <FocusComparison {...baseProps} pgWsById={wsById({ 'pg-toss': '토스페이먼츠', 'pg-kg': 'KG이니시스' }, { 'pg-toss': logoTs })} />,
     );
     // 기본 활성 = 최저 카드수수료(토스, pg-toss)
     expect(cardSpy.lastCounterparty).toMatchObject({
@@ -377,7 +375,7 @@ describe('FocusComparison — pgWsLogoUpdatedAtMap → CounterpartyProfileCard �
   });
 
   it('로고가 없는 활성 PG에는 logoUpdatedAt=null을 전달한다', () => {
-    render(<FocusComparison {...baseProps} pgWsLogoUpdatedAtMap={{}} />);
+    render(<FocusComparison {...baseProps} pgWsById={wsById({ 'pg-toss': '토스페이먼츠', 'pg-kg': 'KG이니시스' })} />);
     expect(cardSpy.lastCounterparty).toMatchObject({
       workspaceId: 'pg-toss',
       logoUpdatedAt: null,

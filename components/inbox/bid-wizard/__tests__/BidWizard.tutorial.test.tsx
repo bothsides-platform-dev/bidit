@@ -42,6 +42,8 @@ vi.mock('@/components/messages/CounterpartyProfileCard', () => ({
 }));
 
 import { BidWizard } from '../BidWizard';
+import { buyerOf } from '@/lib/types/__tests__/_workspace-fixtures';
+
 
 const rfp = {
   id: 'tutorial-rfp',
@@ -60,13 +62,13 @@ afterEach(cleanup);
 
 describe('BidWizard 튜토리얼 코치마크 훅', () => {
   it('폼 콘텐츠 영역에 data-coachmark="tutorial-bid-form"이 있다', () => {
-    render(<BidWizard rfp={rfp} buyerName="튜토리얼 쇼핑몰" />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('튜토리얼 쇼핑몰')} />);
     expect(document.querySelector('[data-coachmark="tutorial-bid-form"]')).toBeInTheDocument();
   });
 
   it('1단계에서는 제출 버튼(tutorial-bid-submit)이 없고, 4단계(검토·발송) 도달 시에만 나타난다', async () => {
     const user = userEvent.setup();
-    render(<BidWizard rfp={rfp} buyerName="튜토리얼 쇼핑몰" />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('튜토리얼 쇼핑몰')} />);
     expect(document.querySelector('[data-coachmark="tutorial-bid-submit"]')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '수수료' }));
@@ -78,7 +80,7 @@ describe('BidWizard 튜토리얼 코치마크 훅', () => {
 
   it('제출 확인 다이얼로그가 열리면 확인 버튼에 tutorial-bid-confirm 앵커가 붙는다', async () => {
     const user = userEvent.setup();
-    render(<BidWizard rfp={rfp} buyerName="튜토리얼 쇼핑몰" onSampleSubmit={() => {}} />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('튜토리얼 쇼핑몰')} onSampleSubmit={() => {}} />);
     await user.click(screen.getByRole('button', { name: '수수료' }));
     await user.click(screen.getByRole('button', { name: '견적서' }));
     await user.click(screen.getByRole('button', { name: '검토·발송' }));
@@ -96,7 +98,7 @@ describe('BidWizard 튜토리얼 코치마크 훅', () => {
 
   it('푸터 다음 버튼에 스텝별 tutorial-bid-next-N 앵커가 붙는다', async () => {
     const user = userEvent.setup();
-    render(<BidWizard rfp={rfp} buyerName="튜토리얼 쇼핑몰" />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('튜토리얼 쇼핑몰')} />);
     expect(document.querySelector('[data-coachmark="tutorial-bid-next-1"]')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '수수료' }));
@@ -110,7 +112,7 @@ describe('BidWizard 튜토리얼 코치마크 훅', () => {
   it('저장된 초안이 initialDraft 시드와 동일하면 복원 토스트를 띄우지 않는다 (baseline이 시드)', async () => {
     const { tutorialBidDraftSeed } = await import('@/lib/onboarding/tutorial-fixtures');
     localStorage.setItem('bid-draft:tutorial-rfp', JSON.stringify(tutorialBidDraftSeed));
-    render(<BidWizard rfp={rfp} buyerName="튜토리얼 쇼핑몰" initialDraft={tutorialBidDraftSeed} />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('튜토리얼 쇼핑몰')} initialDraft={tutorialBidDraftSeed} />);
     expect(toastMock).not.toHaveBeenCalledWith(
       '이전에 작성하던 내용을 그대로 불러왔어요',
       expect.anything(),
@@ -121,7 +123,7 @@ describe('BidWizard 튜토리얼 코치마크 훅', () => {
     const { tutorialBidDraftSeed } = await import('@/lib/onboarding/tutorial-fixtures');
     const divergent = { ...tutorialBidDraftSeed, memo: '과거에 타이핑한 내용', cycleNum: '7' };
     localStorage.setItem('bid-draft:tutorial-rfp', JSON.stringify(divergent));
-    render(<BidWizard rfp={rfp} buyerName="튜토리얼 쇼핑몰" initialDraft={tutorialBidDraftSeed} />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('튜토리얼 쇼핑몰')} initialDraft={tutorialBidDraftSeed} />);
 
     // 정산주기 입력이 시드(2)가 아니라 저장 초안(7)에서 온다 + 복원 토스트 발화.
     expect(screen.getByDisplayValue('7')).toBeInTheDocument();
@@ -133,7 +135,7 @@ describe('BidWizard 튜토리얼 코치마크 훅', () => {
 
   it('onSampleSubmit 모드에서 템플릿 저장은 실 액션 없이 안내 토스트를 띄우고 패널을 닫는다', async () => {
     const user = userEvent.setup();
-    render(<BidWizard rfp={rfp} buyerName="튜토리얼 쇼핑몰" onSampleSubmit={() => {}} />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('튜토리얼 쇼핑몰')} onSampleSubmit={() => {}} />);
 
     // 4단계(검토·발송)로 이동 — 푸터 "다음" 버튼을 순서대로(기존 테스트와 동일 패턴).
     await user.click(screen.getByRole('button', { name: '수수료' }));
@@ -159,7 +161,7 @@ describe('BidWizard 튜토리얼 코치마크 훅', () => {
 
   it('onSampleSubmit 모드에서 견적서 PDF 선택은 실 업로드(uploadAttachment)를 부르지 않고 안내 토스트만 띄운다', async () => {
     const user = userEvent.setup();
-    render(<BidWizard rfp={rfp} buyerName="튜토리얼 쇼핑몰" onSampleSubmit={() => {}} />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('튜토리얼 쇼핑몰')} onSampleSubmit={() => {}} />);
 
     // 3단계(견적서)로 이동 — 푸터 "다음" 버튼을 순서대로.
     await user.click(screen.getByRole('button', { name: '수수료' }));
@@ -178,7 +180,7 @@ describe('BidWizard 튜토리얼 코치마크 훅', () => {
     // 4단계(검토·발송)까지 이동한다. 실 모드라면 여기서 제출 가드가 막아야 정상이지만,
     // 샘플(튜토리얼) 모드는 코치마크 투어가 제출 클릭에서 종료되므로 가드에 막히면 안내
     // 없이 좌초된다 — 확인 다이얼로그로 진행해야 한다.
-    render(<BidWizard rfp={rfp} buyerName="튜토리얼 쇼핑몰" onSampleSubmit={() => {}} />);
+    render(<BidWizard rfp={rfp} buyer={buyerOf('튜토리얼 쇼핑몰')} onSampleSubmit={() => {}} />);
 
     await user.click(screen.getByRole('button', { name: '수수료' }));
     await user.click(screen.getByRole('button', { name: '견적서' }));

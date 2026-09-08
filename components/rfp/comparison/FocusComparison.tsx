@@ -28,6 +28,7 @@ import { useFlashOnChange } from './useFlashOnChange';
 import { CounterpartyProfileCard } from '@/components/messages/CounterpartyProfileCard';
 import { useDealRoom } from '@/components/deal-room/DealRoomContext';
 import { Divider } from '@/components/primitives/Divider';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
 import {
   type Bid,
   type CustomPaymentMethod,
@@ -37,8 +38,8 @@ import {
 
 type Props = {
   bids: Bid[];
-  pgWsNameMap: Record<string, string>;
-  pgWsLogoUpdatedAtMap: Record<string, string | null>;
+  /** pgWsId → 워크스페이스 신원. 이름 맵과 로고 맵을 나누면 한쪽만 배선되는 사고가 난다. */
+  pgWsById: Record<string, WorkspaceDisplay>;
   current: CurrentConditions;
   rfpStatus: string;
   awardedBidId?: string | null;
@@ -62,7 +63,7 @@ type Props = {
 };
 
 export function FocusComparison(props: Props) {
-  const { bids, pgWsNameMap, pgWsLogoUpdatedAtMap, current, rfpStatus, awardedBidId, requoteByPg, onSampleAward } = props;
+  const { bids, pgWsById, current, rfpStatus, awardedBidId, requoteByPg, onSampleAward } = props;
   const router = useRouter();
 
   const [tier, setTier] = useState<MerchantTier>(props.buyerGrade ?? 'general');
@@ -90,21 +91,15 @@ export function FocusComparison(props: Props) {
     if (!activePgWsId) return;
     setCounterparty({
       workspaceId: activePgWsId,
-      name: pgWsNameMap[activePgWsId] ?? activePgWsId,
+      name: pgWsById[activePgWsId]?.name ?? activePgWsId,
       type: 'pg',
-      logoUpdatedAt: pgWsLogoUpdatedAtMap[activePgWsId] ?? null,
+      logoUpdatedAt: pgWsById[activePgWsId]?.logoUpdatedAt ?? null,
     });
-  }, [activePgWsId, pgWsNameMap, pgWsLogoUpdatedAtMap, setCounterparty]);
+  }, [activePgWsId, pgWsById, setCounterparty]);
 
-  const pgName = useCallback(
-    (wsId: string) => pgWsNameMap[wsId] ?? wsId,
-    [pgWsNameMap],
-  );
+  const pgName = useCallback((wsId: string) => pgWsById[wsId]?.name ?? wsId, [pgWsById]);
 
-  const pgLogoFn = useCallback(
-    (wsId: string) => pgWsLogoUpdatedAtMap[wsId] ?? null,
-    [pgWsLogoUpdatedAtMap],
-  );
+  const pgLogoFn = useCallback((wsId: string) => pgWsById[wsId]?.logoUpdatedAt ?? null, [pgWsById]);
 
   // 탭/peek/요율-비교 콜백은 안정 참조로 — memo 된 서브패널의 재렌더를 막는다.
   const onPeekEnter = useCallback((bidId: string) => setPeekBidId(bidId), []);
@@ -223,7 +218,7 @@ export function FocusComparison(props: Props) {
               sortedBids={sortedBids}
               active={active}
               tier={tier}
-              pgWsNameMap={pgWsNameMap}
+              pgWsById={pgWsById}
               onSelect={onSelectByPgWs}
               flash={flash}
             />

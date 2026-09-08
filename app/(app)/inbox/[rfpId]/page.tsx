@@ -64,10 +64,10 @@ async function PgRfpDetailLoader({
           rfpCode={data.rfp.code}
           rfpTitle={data.rfp.title}
           fixedCounterparty={{
-            workspaceId: data.rfp.buyerWsId,
-            name: data.buyerName,
+            workspaceId: data.buyer.id,
+            name: data.buyer.name,
             type: 'buyer',
-            logoUpdatedAt: data.buyerLogoUpdatedAt,
+            logoUpdatedAt: data.buyer.logoUpdatedAt,
           }}
           closedCounterpartyIds={
             data.rfp.status === 'awarded' && !data.awardedToMe

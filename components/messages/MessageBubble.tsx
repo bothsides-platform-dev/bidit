@@ -7,9 +7,8 @@ import { MessageAttachmentGrid } from './MessageAttachmentGrid';
 
 type Attachments = ComponentProps<typeof MessageAttachmentGrid>['attachments'];
 
-// 말풍선 표면(배경·여백·모양·최대폭) className — MessageBubble 과 전송 morph 클론
-// (MorphFlightLayer)이 공유해 시각이 어긋나지 않게 한다. pending(전송 중)은 살짝 투명.
-export function bubbleSurfaceClass(isSelf: boolean, pending = false): string {
+// 말풍선 표면(배경·여백·모양·최대폭). pending(전송 중)은 살짝 투명.
+function bubbleSurfaceClass(isSelf: boolean, pending = false): string {
   return cn(
     'max-w-[78%] whitespace-pre-wrap break-words rounded-[var(--md-sys-shape-medium)] px-3 py-2 text-[13px] leading-relaxed',
     isSelf
@@ -34,7 +33,6 @@ export const MessageBubble = memo(function MessageBubble({
   body,
   attachments,
   renderBody,
-  bubbleKey,
 }: {
   isSelf: boolean;
   pending?: boolean;
@@ -42,12 +40,10 @@ export const MessageBubble = memo(function MessageBubble({
   body: string;
   attachments: Attachments;
   renderBody: (body: string) => ReactNode;
-  // 전송 morph 타깃 측정용 안정 키 — 호출처가 말풍선 div 에 data-bubble-key 로 단다.
-  bubbleKey?: string;
 }) {
   return (
     <div className={cn('flex w-full items-end gap-1.5', isSelf && 'flex-row-reverse')}>
-      <div data-bubble-key={bubbleKey} className={bubbleSurfaceClass(isSelf, pending)}>
+      <div className={bubbleSurfaceClass(isSelf, pending)}>
         {renderBody(body)}
         {attachments.length > 0 && <MessageAttachmentGrid attachments={attachments} />}
       </div>

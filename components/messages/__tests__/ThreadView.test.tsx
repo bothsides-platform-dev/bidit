@@ -129,49 +129,6 @@ vi.mock('@/lib/toast', () => ({
   toast: (...args: unknown[]) => toast(...args),
 }));
 
-// 전송 morph 는 jsdom 에서 두 겹으로 막혀 있다: matchMedia 부재로 useReducedMotion 이
-// true 가 되고, getBoundingClientRect 가 전부 0 이라 shouldMorph 의 폭 게이트에 걸린다.
-// 기본값은 현행(true)을 유지해 기존 테스트를 건드리지 않고, morph 테스트만 뒤집는다.
-// motion.div 도 스텁으로 바꾼다 — 실제 애니메이션은 jsdom 에서 첫 프레임에 완료를
-// 통보해 클론이 즉시 걷히므로, 클론 존속을 관찰할 수 없다. 스텁은 완료를 통보하지
-// 않아 "클론이 언제 걷히는가"가 오직 훅의 정리 경로로만 결정된다(=이 테스트의 대상).
-// ThreadView 트리에서 motion 을 쓰는 컴포넌트는 MorphFlightLayer 하나뿐이다.
-let reduceMotion = true;
-const MOTION_ONLY_PROPS = new Set(['initial', 'animate', 'exit', 'transition', 'onAnimationComplete']);
-vi.mock('motion/react', async (importOriginal) => {
-  const mod = await importOriginal<typeof import('motion/react')>();
-  const { createElement } = await import('react');
-  const motion = new Proxy(
-    {},
-    {
-      get: (_target, tag: string) =>
-        function MotionStub(props: Record<string, unknown>) {
-          // 애니메이션 전용 prop 은 떼고 나머지만 DOM 으로 넘긴다(React 경고 방지).
-          const rest = Object.fromEntries(
-            Object.entries(props).filter(([k]) => !MOTION_ONLY_PROPS.has(k)),
-          );
-          return createElement(tag, rest);
-        },
-    },
-  );
-  return { ...mod, motion, useReducedMotion: () => reduceMotion };
-});
-
-// 레이아웃이 없는 jsdom 에서 morph 를 발동시키기 위한 rect 스텁. 클론이 뜨는 데 필요한
-// 건 "0 이 아닌 폭"뿐이라 모든 엘리먼트에 같은 값을 물린다. 반환된 함수로 원복한다.
-function stubLayoutRects(): () => void {
-  const original = Element.prototype.getBoundingClientRect;
-  Element.prototype.getBoundingClientRect = function (): DOMRect {
-    return {
-      left: 10, top: 500, width: 300, height: 32,
-      right: 310, bottom: 532, x: 10, y: 500, toJSON: () => ({}),
-    } as DOMRect;
-  };
-  return () => {
-    Element.prototype.getBoundingClientRect = original;
-  };
-}
-
 vi.mock('../ContextPanel', () => ({
   ContextPanel: ({ rfpContext }: { rfpContext?: { title?: string } }) => (
     <div data-testid="context-panel">{rfpContext?.title ?? ''}</div>
@@ -1120,6 +1077,24 @@ describe('ThreadView 빈 스레드', () => {
 });
 
 describe('ThreadView 전송 중 상태', () => {
+  it('전송 중 말풍선을 morph 오버레이 없이 목록에 직접 표시한다', async () => {
+    const user = userEvent.setup();
+    let resolveSend!: (v: unknown) => void;
+    sendChatMessageAction.mockReturnValue(new Promise((res) => { resolveSend = res; }));
+    render(base());
+
+    await user.type(screen.getByPlaceholderText('메시지를 입력하세요…'), '즉시 표시 메시지');
+    await user.click(screen.getByRole('button', { name: '보내기' }));
+
+    const bubble = await screen.findByText('즉시 표시 메시지');
+    expect(bubble.closest('[data-message-row]')).toHaveAttribute('data-sender', 'self');
+    expect(document.querySelector('[data-morph-bounds]')).toBeNull();
+
+    await act(async () => {
+      resolveSend({ ok: true, conversationId: 'conv-1', messageId: 'm-new' });
+    });
+  });
+
   it('전송 중에는 "전송 중" 표식을 보이고, 성공하면 일반 상태로 바뀐다', async () => {
     const user = userEvent.setup();
     let resolveSend!: (v: unknown) => void;
@@ -1586,66 +1561,5 @@ describe('variant=page (갤러리 버튼 없음)', () => {
       />
     );
     expect(screen.queryByText(/파일 \d/)).not.toBeInTheDocument();
-  });
-});
-
-// 전송 morph 클론은 최상위 z 로 body 에 portal 되므로, 두 가지를 화면 계약으로 고정한다:
-// ① 클론이 채팅 패널 경계 밖(딜룸 모달 헤더 등)으로 새지 않을 것,
-// ② 말풍선 목록이 통째로 갈릴 때 클론이 남아 실 말풍선과 겹치지 않을 것.
-describe('ThreadView — 전송 morph', () => {
-  const clones = (): NodeListOf<Element> => document.querySelectorAll('[data-morph-clip]');
-
-  it('채팅 패널에 morph 경계를 달아 클론이 목록·입력창 밖으로 새지 않게 한다', () => {
-    render(base());
-
-    const bounds = document.querySelector('[data-morph-bounds]');
-    expect(bounds).not.toBeNull();
-    // 경계는 morph 의 두 끝점(도착=말풍선 목록, 출발=입력창)을 모두 품어야 한다.
-    expect(bounds).toContainElement(document.querySelector('[data-message-list]'));
-    expect(bounds).toContainElement(screen.getByPlaceholderText('메시지를 입력하세요…'));
-  });
-
-  // MessageInbox 는 같은 conversationId 로 messages prop 을 교체한다(remount 아님).
-  // 교체된 서버 행에는 localKey 가 없어 morph 타깃 키가 끊기므로, 클론을 거두지 않으면
-  // 실 말풍선과 클론이 최대 0.34s 동안 함께 보인다.
-  it('messages prop 이 갈리면 진행 중인 클론을 거둔다(이중 말풍선 방지)', async () => {
-    reduceMotion = false;
-    const restoreRects = stubLayoutRects();
-    try {
-      const user = userEvent.setup();
-      const { rerender } = render(base());
-
-      await user.type(screen.getByPlaceholderText('메시지를 입력하세요…'), '보내는 중인 말');
-      await user.click(screen.getByRole('button', { name: '보내기' }));
-      await waitFor(() => expect(clones()).toHaveLength(1));
-
-      // 로더가 같은 대화의 새 배열을 내려준다 — 낙관적 행이 localKey 없는 서버 행으로 교체된다.
-      const resynced: ThreadMessage[] = [
-        ...messages,
-        {
-          id: 'm-new',
-          authorUserId: 'u-self',
-          authorName: '나',
-          authorEmail: 'me@buyer.com',
-          authorAvatarUpdatedAt: null,
-          sender: 'self',
-          body: '보내는 중인 말',
-          rfpId: null,
-          createdAt: '2026-05-27T06:00:00.000Z',
-          readByCounterparty: false,
-          attachments: [],
-        },
-      ];
-      act(() => {
-        rerender(base({ messages: resynced }));
-      });
-
-      expect(clones()).toHaveLength(0);
-      // 실 말풍선은 한 번만 — 클론과 겹치지 않는다.
-      expect(screen.getAllByText('보내는 중인 말')).toHaveLength(1);
-    } finally {
-      restoreRects();
-      reduceMotion = true;
-    }
   });
 });

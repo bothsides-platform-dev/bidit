@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { RecipientCard } from '../RecipientCard';
 
-const cp = { name: '(주)샘플테크', type: 'buyer' as const, workspaceId: 'ws-buyer-1' };
+const cp = { name: '(주)샘플테크', type: 'buyer' as const, workspaceId: 'ws-buyer-1', logoUpdatedAt: null };
 
 describe('RecipientCard', () => {
   it('rfpContext 없으면 RFP 줄을 렌더하지 않는다', () => {

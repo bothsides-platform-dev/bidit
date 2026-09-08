@@ -8,13 +8,13 @@ afterEach(() => {
 });
 
 describe('WorkspaceAvatar', () => {
-  it('renders initials when logoUpdatedAt is not provided', () => {
-    render(<WorkspaceAvatar name="서포트 B" workspaceId="ws-1" />);
+  it('renders initials when logoUpdatedAt is null', () => {
+    render(<WorkspaceAvatar name="서포트 B" workspaceId="ws-1" logoUpdatedAt={null} />);
     expect(screen.getByRole('img')).toHaveTextContent('B');
   });
 
-  it('renders initials when neither prop is provided', () => {
-    render(<WorkspaceAvatar name="Acme Corp" />);
+  it('renders initials when there is no workspaceId', () => {
+    render(<WorkspaceAvatar name="Acme Corp" logoUpdatedAt={null} />);
     expect(screen.getByRole('img')).toHaveTextContent('A');
   });
 
