@@ -72,6 +72,27 @@ describe('AuditLogPanel', () => {
     expect(screen.queryByText('workspace.name_change_request')).not.toBeInTheDocument();
   });
 
+  it('초대 재전송·취소 감사 코드를 사용자 문구로 보여준다', () => {
+    const labels: Record<string, string> = {
+      'workspace.member_invite_resend': '초대 메일을 다시 보냈어요',
+      'workspace.member_invite_cancel': '초대를 취소했어요',
+    };
+    render(
+      <AuditLogPanel
+        workspaceType="buyer"
+        initialLogs={Object.keys(labels).map((action, i) =>
+          log({ id: `invite-${i}`, action, entityType: 'workspace', entityId: 'ws-1' }),
+        )}
+        initialNextCursor={null}
+      />,
+    );
+
+    for (const [action, label] of Object.entries(labels)) {
+      expect(screen.getByText(label), action).toBeInTheDocument();
+      expect(screen.queryByText(action)).not.toBeInTheDocument();
+    }
+  });
+
   it('전자서명 action 전부에 한국어 라벨이 있다 — raw 코드가 사용자에게 새지 않는다', () => {
     const signingLabels: Record<string, string> = {
       'signing.awaiting_template': '계약서 준비를 시작했어요',

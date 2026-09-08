@@ -28,6 +28,8 @@ const ACTION_LABELS: Record<string, string> = {
   'workspace.create': '워크스페이스를 만들었어요',
   'workspace.name_change_request': '회사 이름 변경을 요청했어요',
   'workspace.member_invite': '멤버를 초대했어요',
+  'workspace.member_invite_resend': '초대 메일을 다시 보냈어요',
+  'workspace.member_invite_cancel': '초대를 취소했어요',
   'workspace.invite_accept': '초대를 수락했어요',
   'workspace.member_role_change': '멤버 역할을 바꿨어요',
   'workspace.member_remove': '멤버를 내보냈어요',

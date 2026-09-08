@@ -1,5 +1,6 @@
 import { defineAsyncSingleton } from '@/lib/server/_singleton';
 import { getMembership, isApprovedAdmin } from '@/lib/auth/active-workspace';
+import { isMasterEmail } from '@/lib/auth/master-allowlist';
 import { normalizeEmail, bucket15Min } from './_service-utils';
 import { randomUUID } from 'node:crypto';
 import type {
@@ -37,6 +38,17 @@ export class WorkspaceService {
     private readonly userRepo: UserRepo,
     private readonly bizProfileRepo: BizProfileRepo,
   ) {}
+
+  private async canManageWorkspace(actor: WorkspaceActor): Promise<boolean> {
+    const membership = await getMembership(actor.userId, actor.workspaceId);
+    if (isApprovedAdmin(membership)) return true;
+
+    // 운영계정은 어느 워크스페이스에도 멤버십 행을 만들지 않고 synthetic admin 으로
+    // 진입한다. 세션의 isMaster 플래그를 신뢰하지 않고 DB의 현재 이메일을 서버 전용
+    // allowlist 와 다시 대조해, 서비스 경계를 직접 호출해도 같은 권한 판정이 적용된다.
+    const user = await this.userRepo.findById(actor.userId);
+    return isMasterEmail(user?.email);
+  }
 
   async requestNameChange(
     actor: WorkspaceActor,
@@ -172,9 +184,8 @@ export class WorkspaceService {
       return { ok: false, error: 'INVALID_INPUT' };
     }
 
-    const membership = await getMembership(actor.userId, actor.workspaceId);
-    // 승인된 admin 만 관리 권한 — 미승인(pending_approval) admin 은 차단.
-    if (!isApprovedAdmin(membership)) {
+    // 승인된 admin 또는 운영계정만 관리 권한. 미승인 admin 은 계속 차단한다.
+    if (!(await this.canManageWorkspace(actor))) {
       return { ok: false, error: 'FORBIDDEN_NOT_ADMIN' };
     }
 
@@ -253,9 +264,7 @@ export class WorkspaceService {
     input: { email: string },
     actor: WorkspaceActor,
   ): Promise<ServiceResult> {
-    const membership = await getMembership(actor.userId, actor.workspaceId);
-    // 승인된 admin 만 관리 권한 — 미승인(pending_approval) admin 은 차단.
-    if (!isApprovedAdmin(membership)) {
+    if (!(await this.canManageWorkspace(actor))) {
       return { ok: false, error: 'FORBIDDEN_NOT_ADMIN' };
     }
 
@@ -297,6 +306,18 @@ export class WorkspaceService {
         linkUrl: `/invite/workspace/${rawToken}`,
       });
 
+      await this.auditRepo.insert(
+        {
+          actorUserId: actor.userId,
+          actorWorkspaceId: actor.workspaceId,
+          action: 'workspace.member_invite_resend',
+          entityType: 'workspace',
+          entityId: actor.workspaceId,
+          metadata: { email: normalizedEmail },
+        },
+        tx,
+      );
+
       return { ok: true };
     });
 
@@ -311,21 +332,38 @@ export class WorkspaceService {
     input: { email: string },
     actor: WorkspaceActor,
   ): Promise<ServiceResult> {
-    const membership = await getMembership(actor.userId, actor.workspaceId);
-    // 승인된 admin 만 관리 권한 — 미승인(pending_approval) admin 은 차단.
-    if (!isApprovedAdmin(membership)) {
+    if (!(await this.canManageWorkspace(actor))) {
       return { ok: false, error: 'FORBIDDEN_NOT_ADMIN' };
     }
 
     const normalizedEmail = normalizeEmail(input.email);
 
-    const updated = await this.workspaceRepo.expirePendingInvitation({
-      workspaceId: actor.workspaceId,
-      email: normalizedEmail,
-    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return this._db.transaction(async (tx: any): Promise<ServiceResult> => {
+      const updated = await this.workspaceRepo.expirePendingInvitation(
+        {
+          workspaceId: actor.workspaceId,
+          email: normalizedEmail,
+        },
+        tx,
+      );
 
-    if (!updated) return { ok: false, error: 'INVITE_NOT_FOUND' };
-    return { ok: true };
+      if (!updated) return { ok: false, error: 'INVITE_NOT_FOUND' };
+
+      await this.auditRepo.insert(
+        {
+          actorUserId: actor.userId,
+          actorWorkspaceId: actor.workspaceId,
+          action: 'workspace.member_invite_cancel',
+          entityType: 'workspace',
+          entityId: actor.workspaceId,
+          metadata: { email: normalizedEmail },
+        },
+        tx,
+      );
+
+      return { ok: true };
+    });
   }
 
   async acceptInvite(
@@ -371,9 +409,7 @@ export class WorkspaceService {
     input: { targetUserId: string; role: 'admin' | 'member' },
     actor: WorkspaceActor,
   ): Promise<ServiceResult> {
-    const membership = await getMembership(actor.userId, actor.workspaceId);
-    // 승인된 admin 만 관리 권한 — 미승인(pending_approval) admin 은 차단.
-    if (!isApprovedAdmin(membership)) {
+    if (!(await this.canManageWorkspace(actor))) {
       return { ok: false, error: 'FORBIDDEN_NOT_ADMIN' };
     }
 
@@ -428,16 +464,7 @@ export class WorkspaceService {
     input: { targetUserId: string },
     actor: WorkspaceActor,
   ): Promise<ServiceResult> {
-    // INVARIANT — 이 메서드에는 `changeMemberRole` 과 달리 마지막-admin 가드가 없다.
-    // 0-admin 이 되지 않는 이유는 아래 두 검사의 창발적 결과다:
-    //   ① 호출자는 반드시 승인된 admin 이고(`isApprovedAdmin`),
-    //   ② 자기 자신은 제거할 수 없다(`SELF_REMOVAL`).
-    // 따라서 호출자 본인이 항상 admin 으로 남는다. **`SELF_REMOVAL` 을 완화하면
-    // 그 즉시 0-admin 경로가 열리므로**, 그때는 여기에도 트랜잭션-내 admin 카운트
-    // 가드(`changeMemberRole` 과 동형)를 함께 넣어야 한다.
-    const membership = await getMembership(actor.userId, actor.workspaceId);
-    // 승인된 admin 만 관리 권한 — 미승인(pending_approval) admin 은 차단.
-    if (!isApprovedAdmin(membership)) {
+    if (!(await this.canManageWorkspace(actor))) {
       return { ok: false, error: 'FORBIDDEN_NOT_ADMIN' };
     }
 
@@ -445,14 +472,26 @@ export class WorkspaceService {
       return { ok: false, error: 'SELF_REMOVAL' };
     }
 
-    const target = await this.workspaceRepo.getMembership(
-      input.targetUserId,
-      actor.workspaceId,
-    );
-    if (!target) return { ok: false, error: 'MEMBER_NOT_FOUND' };
-
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    await this._db.transaction(async (tx: any) => {
+    const failure = await this._db.transaction(async (tx: any) => {
+      const target = await this.workspaceRepo.getMembership(
+        input.targetUserId,
+        actor.workspaceId,
+        tx,
+      );
+      if (!target) return 'MEMBER_NOT_FOUND' as const;
+
+      // 운영계정은 워크스페이스 멤버가 아니므로 기존 SELF_REMOVAL 불변식만으로는
+      // 마지막 관리자를 보호할 수 없다. 역할 변경과 같은 행 잠금 카운트를 사용해
+      // 동시 추방/강등에서도 승인된 관리자가 0명이 되는 것을 막는다.
+      if (isApprovedAdmin(target)) {
+        const adminCount = await this.workspaceRepo.countApprovedAdminsForUpdate(
+          actor.workspaceId,
+          tx,
+        );
+        if (adminCount <= 1) return 'LAST_ADMIN' as const;
+      }
+
       await this.workspaceRepo.removeMember(
         { workspaceId: actor.workspaceId, userId: input.targetUserId },
         tx,
@@ -471,7 +510,10 @@ export class WorkspaceService {
         },
         tx,
       );
+      return null;
     });
+
+    if (failure) return { ok: false, error: failure };
 
     // 라이브 WS 연결 즉시 차단 — password reset 패턴 동일.
     void disconnectCentrifugoUser(input.targetUserId);

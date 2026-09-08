@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { requireSession } from '@/lib/auth/session';
 import { getMembership, isApprovedAdmin } from '@/lib/auth/active-workspace';
+import { isMasterEmail } from '@/lib/auth/master-allowlist';
 import { getAuditLogRepo } from '@/lib/server/repositories/factory';
 import type { AuditLogCursor, AuditLogRecord } from '@/lib/server/repositories/types';
 import type { ActionResult } from '@/lib/server/actions/_result';
@@ -29,7 +30,8 @@ const DEFAULT_LIMIT = 50;
 
 /**
  * 설정 > 활동 기록 (C5) — 워크스페이스 감사 로그 조회.
- * admin 전용. JWT role 은 stale 할 수 있으므로 DB 멤버십을 재검증한다.
+ * 승인된 admin 또는 운영계정 전용. 일반 사용자의 JWT role 은 stale 할 수 있으므로
+ * DB 멤버십을 재검증한다.
  */
 export async function listAuditLogsAction(
   input: ListAuditLogsInput = {},
@@ -47,9 +49,11 @@ export async function listAuditLogsAction(
   const parsed = Input.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'INVALID_INPUT' };
 
-  const membership = await getMembership(session.user.id, wsId);
-  if (!isApprovedAdmin(membership)) {
-    return { ok: false, error: 'FORBIDDEN_NOT_ADMIN' };
+  if (!isMasterEmail(session.user.email)) {
+    const membership = await getMembership(session.user.id, wsId);
+    if (!isApprovedAdmin(membership)) {
+      return { ok: false, error: 'FORBIDDEN_NOT_ADMIN' };
+    }
   }
 
   const limit = parsed.data.limit ?? DEFAULT_LIMIT;

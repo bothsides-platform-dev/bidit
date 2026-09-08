@@ -18,7 +18,7 @@ import { getAuditLogRepo } from '@/lib/server/repositories/factory';
 
 const sessionRef: {
   value: {
-    user: { id: string; workspaceId: string | null; role: string | null };
+    user: { id: string; email?: string; workspaceId: string | null; role: string | null };
   } | null;
 } = { value: null };
 vi.mock('@/lib/auth/session', () => ({
@@ -78,6 +78,42 @@ describe('listAuditLogsAction', () => {
     sessionRef.value = { user: { id: member.id, workspaceId: ws.id, role: 'admin' } };
     const r = await listAuditLogsAction({});
     expect(r).toEqual({ ok: false, error: 'FORBIDDEN_NOT_ADMIN' });
+  });
+
+  it('운영계정은 멤버십 행 없이 현재 워크스페이스의 활동 기록을 조회한다', async () => {
+    const previous = process.env.MASTER_ACCOUNT_EMAILS;
+    process.env.MASTER_ACCOUNT_EMAILS = 'ops@support-b.com';
+    try {
+      const master = await seedUser(db, { name: '운영자', email: 'ops@support-b.com' });
+      const ws = await seedBuyerWorkspace(db);
+      await (await getAuditLogRepo()).insert({
+        actorUserId: master.id,
+        actorWorkspaceId: ws.id,
+        action: 'workspace.member_invite',
+      });
+      sessionRef.value = {
+        user: {
+          id: master.id,
+          email: 'ops@support-b.com',
+          workspaceId: ws.id,
+          role: 'admin',
+        },
+      };
+
+      const result = await listAuditLogsAction({});
+
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.logs).toHaveLength(1);
+      expect(result.logs[0]).toMatchObject({
+        action: 'workspace.member_invite',
+        actorUserId: master.id,
+        viaMaster: true,
+      });
+    } finally {
+      if (previous === undefined) delete process.env.MASTER_ACCOUNT_EMAILS;
+      else process.env.MASTER_ACCOUNT_EMAILS = previous;
+    }
   });
 
   it('admin 은 자기 워크스페이스 로그만 최신순으로 받는다 (행위자 이름 포함)', async () => {

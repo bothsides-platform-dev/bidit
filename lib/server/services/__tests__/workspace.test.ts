@@ -52,6 +52,17 @@ afterEach(() => {
   __resetForTest();
 });
 
+async function withConfiguredMaster(run: () => Promise<void>): Promise<void> {
+  const previous = process.env.MASTER_ACCOUNT_EMAILS;
+  process.env.MASTER_ACCOUNT_EMAILS = 'ops@support-b.com';
+  try {
+    await run();
+  } finally {
+    if (previous === undefined) delete process.env.MASTER_ACCOUNT_EMAILS;
+    else process.env.MASTER_ACCOUNT_EMAILS = previous;
+  }
+}
+
 // ─── createWorkspace ─────────────────────────────────────────────────────────
 
 describe('WorkspaceService.createWorkspace', () => {
@@ -83,6 +94,27 @@ describe('WorkspaceService.createWorkspace', () => {
 // ─── changeMemberRole ─────────────────────────────────────────────────────────
 
 describe('WorkspaceService.changeMemberRole', () => {
+  it('allows a configured master without a workspace membership to change a member role', async () => {
+    await withConfiguredMaster(async () => {
+      const master = await seedUser(db, { email: 'ops@support-b.com' });
+      const member = await seedUser(db, { email: 'member@test.com' });
+      const ws = await seedBuyerWorkspace(db);
+      await seedMembership(db, ws.id, member.id, 'member');
+
+      const result = await service.changeMemberRole(
+        { targetUserId: member.id, role: 'admin' },
+        { userId: master.id, workspaceId: ws.id },
+      );
+
+      expect(result.ok).toBe(true);
+      const [row] = await db
+        .select({ role: workspaceMembers.role })
+        .from(workspaceMembers)
+        .where(and(eq(workspaceMembers.workspaceId, ws.id), eq(workspaceMembers.userId, member.id)));
+      expect(row.role).toBe('admin');
+    });
+  });
+
   it('promotes a member to admin', async () => {
     const admin = await seedUser(db, { email: 'admin@test.com' });
     const member = await seedUser(db, { email: 'member@test.com' });
@@ -241,6 +273,51 @@ describe('WorkspaceService.changeMemberRole', () => {
 // ─── removeMember ─────────────────────────────────────────────────────────────
 
 describe('WorkspaceService.removeMember', () => {
+  it('allows a configured master without a workspace membership to remove a member', async () => {
+    await withConfiguredMaster(async () => {
+      const master = await seedUser(db, { email: 'ops@support-b.com' });
+      const member = await seedUser(db, { email: 'member@test.com' });
+      const ws = await seedBuyerWorkspace(db);
+      await seedMembership(db, ws.id, member.id, 'member');
+
+      const result = await service.removeMember(
+        { targetUserId: member.id },
+        { userId: master.id, workspaceId: ws.id },
+      );
+
+      expect(result.ok).toBe(true);
+      const rows = await db
+        .select()
+        .from(workspaceMembers)
+        .where(and(eq(workspaceMembers.workspaceId, ws.id), eq(workspaceMembers.userId, member.id)));
+      expect(rows).toHaveLength(0);
+    });
+  });
+
+  it('keeps the last approved admin when a configured master tries to remove them', async () => {
+    await withConfiguredMaster(async () => {
+      vi.mocked(disconnectCentrifugoUser).mockClear();
+      const master = await seedUser(db, { email: 'ops@support-b.com' });
+      const onlyAdmin = await seedUser(db, { email: 'admin@test.com' });
+      const ws = await seedBuyerWorkspace(db);
+      await seedMembership(db, ws.id, onlyAdmin.id, 'admin');
+
+      const result = await service.removeMember(
+        { targetUserId: onlyAdmin.id },
+        { userId: master.id, workspaceId: ws.id },
+      );
+
+      expect(result).toEqual({ ok: false, error: 'LAST_ADMIN' });
+      const rows = await db
+        .select()
+        .from(workspaceMembers)
+        .where(and(eq(workspaceMembers.workspaceId, ws.id), eq(workspaceMembers.userId, onlyAdmin.id)));
+      expect(rows).toHaveLength(1);
+      expect(await db.select({ id: auditLogs.id }).from(auditLogs)).toHaveLength(0);
+      expect(disconnectCentrifugoUser).not.toHaveBeenCalled();
+    });
+  });
+
   it('removes a member from the workspace', async () => {
     const admin = await seedUser(db, { email: 'admin@test.com' });
     const member = await seedUser(db, { email: 'member@test.com' });
@@ -372,6 +449,28 @@ describe('WorkspaceService — pending_approval admin is not an effective admin'
 // ─── inviteMember ─────────────────────────────────────────────────────────────
 
 describe('WorkspaceService.inviteMember', () => {
+  it('allows a configured master without a workspace membership to invite a member', async () => {
+    await withConfiguredMaster(async () => {
+      const master = await seedUser(db, { email: 'ops@support-b.com' });
+      const ws = await seedBuyerWorkspace(db, { name: '운영 대상사' });
+
+      const result = await service.inviteMember(
+        { email: 'newmember@test.com', role: 'member' },
+        { userId: master.id, workspaceId: ws.id },
+      );
+
+      expect(result.ok).toBe(true);
+      const invites = await db.select().from(workspaceInvitations);
+      expect(invites).toHaveLength(1);
+      expect(invites[0]).toMatchObject({
+        workspaceId: ws.id,
+        invitedEmail: 'newmember@test.com',
+        invitedByUserId: master.id,
+        status: 'pending',
+      });
+    });
+  });
+
   it('creates an invitation and enqueues an outbox email', async () => {
     const admin = await seedUser(db, { email: 'admin@test.com' });
     const ws = await seedBuyerWorkspace(db, { name: '초대 테스트사' });
@@ -422,9 +521,53 @@ describe('WorkspaceService.inviteMember', () => {
   });
 });
 
+describe('WorkspaceService.resendInvite', () => {
+  it('allows a configured master without a workspace membership to resend an invite', async () => {
+    await withConfiguredMaster(async () => {
+      const admin = await seedUser(db, { email: 'admin@test.com' });
+      const master = await seedUser(db, { email: 'ops@support-b.com' });
+      const ws = await seedBuyerWorkspace(db, { name: '운영 대상사' });
+      await seedMembership(db, ws.id, admin.id, 'admin');
+      await service.inviteMember(
+        { email: 'pending@test.com', role: 'member' },
+        { userId: admin.id, workspaceId: ws.id },
+      );
+
+      const result = await service.resendInvite(
+        { email: 'pending@test.com' },
+        { userId: master.id, workspaceId: ws.id },
+      );
+
+      expect(result.ok).toBe(true);
+    });
+  });
+});
+
 // ─── cancelInvite ─────────────────────────────────────────────────────────────
 
 describe('WorkspaceService.cancelInvite', () => {
+  it('allows a configured master without a workspace membership to cancel an invite', async () => {
+    await withConfiguredMaster(async () => {
+      const admin = await seedUser(db, { email: 'admin@test.com' });
+      const master = await seedUser(db, { email: 'ops@support-b.com' });
+      const ws = await seedBuyerWorkspace(db);
+      await seedMembership(db, ws.id, admin.id, 'admin');
+      await service.inviteMember(
+        { email: 'pending@test.com', role: 'member' },
+        { userId: admin.id, workspaceId: ws.id },
+      );
+
+      const result = await service.cancelInvite(
+        { email: 'pending@test.com' },
+        { userId: master.id, workspaceId: ws.id },
+      );
+
+      expect(result.ok).toBe(true);
+      const [invite] = await db.select().from(workspaceInvitations);
+      expect(invite.status).toBe('expired');
+    });
+  });
+
   it('marks a pending invitation as expired', async () => {
     const admin = await seedUser(db, { email: 'admin@test.com' });
     const ws = await seedBuyerWorkspace(db);
@@ -582,6 +725,48 @@ describe('WorkspaceService — 감사 로그 기록', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ actorUserId: admin.id, actorWorkspaceId: ws.id });
     expect(rows[0]!.metadata).toMatchObject({ email: 'newbie@audit.com', role: 'member' });
+  });
+
+  it('resendInvite 성공 시 workspace.member_invite_resend 감사 행을 남긴다', async () => {
+    const admin = await seedUser(db, { email: 'admin@audit.com' });
+    const ws = await seedBuyerWorkspace(db);
+    await seedMembership(db, ws.id, admin.id, 'admin');
+    await service.inviteMember(
+      { email: 'resend@audit.com', role: 'member' },
+      { userId: admin.id, workspaceId: ws.id },
+    );
+
+    const r = await service.resendInvite(
+      { email: 'resend@audit.com' },
+      { userId: admin.id, workspaceId: ws.id },
+    );
+    expect(r.ok).toBe(true);
+
+    const rows = await rowsFor('workspace.member_invite_resend');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ actorUserId: admin.id, actorWorkspaceId: ws.id });
+    expect(rows[0]!.metadata).toMatchObject({ email: 'resend@audit.com' });
+  });
+
+  it('cancelInvite 성공 시 workspace.member_invite_cancel 감사 행을 남긴다', async () => {
+    const admin = await seedUser(db, { email: 'admin@audit.com' });
+    const ws = await seedBuyerWorkspace(db);
+    await seedMembership(db, ws.id, admin.id, 'admin');
+    await service.inviteMember(
+      { email: 'cancel@audit.com', role: 'member' },
+      { userId: admin.id, workspaceId: ws.id },
+    );
+
+    const r = await service.cancelInvite(
+      { email: 'cancel@audit.com' },
+      { userId: admin.id, workspaceId: ws.id },
+    );
+    expect(r.ok).toBe(true);
+
+    const rows = await rowsFor('workspace.member_invite_cancel');
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ actorUserId: admin.id, actorWorkspaceId: ws.id });
+    expect(rows[0]!.metadata).toMatchObject({ email: 'cancel@audit.com' });
   });
 
   it('acceptInvite 성공 시 workspace.invite_accept 감사 행을 남긴다', async () => {
