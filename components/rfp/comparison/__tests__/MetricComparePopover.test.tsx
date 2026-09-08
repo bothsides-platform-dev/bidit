@@ -3,19 +3,7 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MetricComparePopover, type CompareRow } from '../MetricComparePopover';
 import type { Bid } from '@/lib/types/bid';
-import type { WorkspaceDisplay } from '@/lib/types/workspace';
-// pgWsId → 표시 신원. 이름 맵과 로고 맵을 나누지 않는다 — 둘 중 하나만 배선되는 사고가
-// 딜룸 로고 누락의 원인이었다.
-const wsById = (
-  names: Record<string, string>,
-  logos: Record<string, string | null> = {},
-): Record<string, WorkspaceDisplay> =>
-  Object.fromEntries(
-    Object.entries(names).map(([id, name]) => [
-      id,
-      { id, name, type: 'pg' as const, logoUpdatedAt: logos[id] ?? null },
-    ]),
-  );
+import { wsById } from '@/lib/types/__tests__/_workspace-fixtures';
 
 
 beforeAll(() => {

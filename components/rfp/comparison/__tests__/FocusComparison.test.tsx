@@ -48,19 +48,7 @@ vi.mock('@/lib/server/actions/rfp/requestRequoteAction', () => ({ requestRequote
 import { FocusComparison } from '../FocusComparison';
 import { DealRoomProvider, useDealRoom } from '@/components/deal-room/DealRoomContext';
 import type { Bid } from '@/lib/types/bid';
-import type { WorkspaceDisplay } from '@/lib/types/workspace';
-// pgWsId → 표시 신원. 이름 맵과 로고 맵을 나누지 않는다 — 둘 중 하나만 배선되는 사고가
-// 딜룸 로고 누락의 원인이었다.
-const wsById = (
-  names: Record<string, string>,
-  logos: Record<string, string | null> = {},
-): Record<string, WorkspaceDisplay> =>
-  Object.fromEntries(
-    Object.entries(names).map(([id, name]) => [
-      id,
-      { id, name, type: 'pg' as const, logoUpdatedAt: logos[id] ?? null },
-    ]),
-  );
+import { wsById } from '@/lib/types/__tests__/_workspace-fixtures';
 
 
 // FocusComparison 은 이제 DealRoomProvider 안에서 포커스 PG 를 publish 한다. 기본 render 를
@@ -363,8 +351,8 @@ describe('FocusComparison — pgWsById → BidTabStrip 로고 전달', () => {
     expect(img).not.toBeNull();
   });
 
-  it('pgWsById이 비어 있으면 로고 이미지가 렌더되지 않는다', () => {
-    render(<FocusComparison {...baseProps} pgWsById={wsById({})} />);
+  it('pgWsById에 로고 버전이 없으면 로고 이미지가 렌더되지 않는다', () => {
+    render(<FocusComparison {...baseProps} pgWsById={wsById({ 'pg-toss': '토스페이먼츠', 'pg-kg': 'KG이니시스' })} />);
     expect(document.querySelector('img[src*="/api/workspace/"]')).toBeNull();
   });
 });
@@ -387,7 +375,7 @@ describe('FocusComparison — pgWsById → CounterpartyProfileCard 로고 전달
   });
 
   it('로고가 없는 활성 PG에는 logoUpdatedAt=null을 전달한다', () => {
-    render(<FocusComparison {...baseProps} pgWsById={wsById({})} />);
+    render(<FocusComparison {...baseProps} pgWsById={wsById({ 'pg-toss': '토스페이먼츠', 'pg-kg': 'KG이니시스' })} />);
     expect(cardSpy.lastCounterparty).toMatchObject({
       workspaceId: 'pg-toss',
       logoUpdatedAt: null,

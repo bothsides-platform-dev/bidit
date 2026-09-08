@@ -17,14 +17,7 @@ vi.mock('@/components/attachments/AttachmentPreviewList', () => ({
 
 import { RfpBriefPanel } from '../RfpBriefPanel';
 import type { RFP } from '@/lib/types/rfp';
-import type { WorkspaceDisplay } from '@/lib/types/workspace';
-// 구매사 신원 fixture — 아바타를 그리는 화면은 이름 문자열이 아니라 이 객체를 받는다.
-const buyerOf = (name: string): WorkspaceDisplay => ({
-  id: 'ws-buyer',
-  name,
-  type: 'buyer',
-  logoUpdatedAt: null,
-});
+import { buyerOf } from '@/lib/types/__tests__/_workspace-fixtures';
 
 const rfp: RFP = {
   id: 'rfp-1',

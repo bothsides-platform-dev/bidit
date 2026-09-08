@@ -2,7 +2,7 @@
 //   - loadBuyerRfpDetail: 소유 가드(null) + submitted bid만 + note Date→ISO 직렬화.
 //   - loadPgRfpDetail: canAccess 가드(null) + markOpened 부수효과(accepted→opened, 멱등) + myBid.
 // 컨벤션: buyer-kanban-loader.test.ts 와 동일 — pglite + seed, auth mock 없음.
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 
@@ -13,6 +13,7 @@ import {
   __useDrizzleWithDbForTest,
   getBidQuoteTemplateRepo,
   getInvitationRepo,
+  getWorkspaceRepo,
 } from '@/lib/server/repositories/factory';
 import {
   seedBizProfile,
@@ -311,6 +312,38 @@ describe('loadBuyerRfpDetail', () => {
     expect(entry.ws.logoUpdatedAt).toBe(logoAt.toISOString());
   });
 
+  it('findDisplayInfoByIds 가 누락한 초대 PG는 unknownPgWorkspace 자리표시자(이름=id, 로고=null)로 대체한다', async () => {
+    // FK(rfp_allowed_pg.pg_ws_id → workspaces.id, cascade)상 실제로 워크스페이스가 사라지면
+    // allowlist 행도 함께 지워져 이 상태를 시딩으로 재현할 수 없다 — 배치 조회가 일부 id를
+    // 빠뜨리는 경합(레플리카 지연 등)을 findDisplayInfoByIds 를 스텁해 흉내낸다. 예전 코드는
+    // `pgWsNameMap[wsId] ?? wsId` 로 이름 대신 id를 노출했는데, 그 폴백이 신원 객체로 옮겨간
+    // 뒤에도 여전히 동작하는지 여기서 고정한다.
+    const rfpId = await ctx.seedRfp('P-2606-LOGO4');
+    await ctx.seedInvitation(rfpId, ctx.tossId);
+    await ctx.db.insert(rfpAllowedPg).values({ rfpId, pgWsId: ctx.tossId });
+
+    const wsRepo = await getWorkspaceRepo();
+    const real = wsRepo.findDisplayInfoByIds.bind(wsRepo);
+    // 매 호출에서 toss만 걷어낸다 — 호출 순서(pgWsById용/pendingRequests용)에 의존하지 않는다.
+    const spy = vi
+      .spyOn(wsRepo, 'findDisplayInfoByIds')
+      .mockImplementation(async (ids, tx) => (await real(ids, tx)).filter((w) => w.id !== ctx.tossId));
+
+    const res = await loadBuyerRfpDetail({
+      code: 'P-2606-LOGO4',
+      workspaceId: ctx.buyerWsId,
+      userId: ctx.buyerId,
+      userName: ctx.buyerName,
+    });
+
+    spy.mockRestore();
+
+    const entry = res!.inviteList.find((i) => i.ws.id === ctx.tossId)!;
+    expect(entry.ws.name).toBe(ctx.tossId);
+    expect(entry.ws.type).toBe('pg');
+    expect(entry.ws.logoUpdatedAt).toBeNull();
+  });
+
   it('pendingRequests 항목이 워크스페이스 신원(로고 버전 포함)을 함께 담는다', async () => {
     const logoAt = new Date('2026-02-03T04:05:06.000Z');
     await ctx.db.update(workspaces).set({ logoUpdatedAt: logoAt }).where(eq(workspaces.id, ctx.tossId));
@@ -328,6 +361,33 @@ describe('loadBuyerRfpDetail', () => {
     expect(req.pgWs.id).toBe(ctx.tossId);
     expect(req.pgWs.name).toBe('toss.im');
     expect(req.pgWs.logoUpdatedAt).toBe(logoAt.toISOString());
+  });
+
+  it('findDisplayInfoByIds 가 누락한 요청 PG도 unknownPgWorkspace 자리표시자로 대체한다', async () => {
+    // 위 inviteList 케이스와 같은 경합을 pendingRequests 경로(reqWsById)에서 재현 — 두 목록이
+    // 같은 헬퍼(unknownPgWorkspace)를 공유하는지, 아니면 한쪽만 폴백이 빠졌는지를 가른다.
+    const rfpId = await ctx.seedRfp('P-2606-LOGO5');
+    await ctx.seedPgRequest(rfpId, ctx.tossId, '제안 드리고 싶어요', 'pending');
+
+    const wsRepo = await getWorkspaceRepo();
+    const real = wsRepo.findDisplayInfoByIds.bind(wsRepo);
+    const spy = vi
+      .spyOn(wsRepo, 'findDisplayInfoByIds')
+      .mockImplementation(async (ids, tx) => (await real(ids, tx)).filter((w) => w.id !== ctx.tossId));
+
+    const res = await loadBuyerRfpDetail({
+      code: 'P-2606-LOGO5',
+      workspaceId: ctx.buyerWsId,
+      userId: ctx.buyerId,
+      userName: ctx.buyerName,
+    });
+
+    spy.mockRestore();
+
+    const req = res!.pendingRequests[0]!;
+    expect(req.pgWs.id).toBe(ctx.tossId);
+    expect(req.pgWs.name).toBe(ctx.tossId);
+    expect(req.pgWs.logoUpdatedAt).toBeNull();
   });
 
   it('pendingRequests에 pending 콜드 피치만 PG명+메시지와 함께 반환', async () => {
@@ -420,6 +480,27 @@ describe('loadPgRfpDetail', () => {
     expect(res!.buyer.id).toBe(ctx.buyerWsId);
     expect(res!.buyer.name).toBe('구매사');
     expect(res!.buyer.logoUpdatedAt).toBe(logoAt.toISOString());
+  });
+
+  it('getDisplayInfo가 구매사를 못 찾으면 buyer가 이름 "—"/타입 buyer/로고 null인 자리표시자로 대체된다', async () => {
+    // rfp.buyer_ws_id 는 FK(NOT NULL, references workspaces.id)라 시딩으로 진짜 "사라진
+    // 구매사"를 만들 수 없다 — 예전 코드의 `buyerWs?.name ?? '—'` 폴백이 실제로 발동하는 건
+    // findById/getDisplayInfo 조회가 실패하는 경합(레플리카 지연 등)뿐이다. 그 폴백이
+    // WorkspaceDisplay 객체로 옮겨간 뒤에도 이름·타입·로고가 전부 안전한 기본값인지 고정한다.
+    const rfpId = await ctx.seedRfp('P-2605-0017');
+    await ctx.seedInvitation(rfpId, ctx.tossId, 'accepted');
+
+    const wsRepo = await getWorkspaceRepo();
+    const spy = vi.spyOn(wsRepo, 'getDisplayInfo').mockResolvedValueOnce(undefined);
+
+    const res = await loadPgRfpDetail({ code: 'P-2605-0017', workspaceId: ctx.tossId });
+
+    spy.mockRestore();
+
+    expect(res!.buyer.id).toBe(ctx.buyerWsId);
+    expect(res!.buyer.name).toBe('—');
+    expect(res!.buyer.type).toBe('buyer');
+    expect(res!.buyer.logoUpdatedAt).toBeNull();
   });
 
   it('pending 재요청이 있으면 pendingRequote 반환; 없으면 null', async () => {
