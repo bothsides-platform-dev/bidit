@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.2.0] - 2026-09-08
+
+### Fixed
+
+- **딜룸에서 상대 회사 로고가 보여요**: 구매사는 `PG 관리`의 초대 PG 목록과 참여 요청 목록에서 PG사 로고를, PG사는 `요청 조건` 화면과 견적 작성 화면에서 구매사 로고를 볼 수 있어요. 로고를 등록해 두었는데도 이름 첫 글자만 보이던 문제를 고쳤어요.
+
 ## [0.9.1.0] - 2026-09-07
 
 ### Changed

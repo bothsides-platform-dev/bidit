@@ -1217,6 +1217,32 @@ v0.4.54.0 이 `verifyEmailAction` 의 **reject** 를 잡아 오류 화면 + 다�
 
 ## Workspace / Members
 
+### 워크스페이스 로고 신선도에 출처가 둘이다 — 같은 화면에서 어긋날 수 있다 (P3)
+`logoUpdatedAt` 을 읽는 경로가 두 갈래다. **컬럼**(`workspaces.logo_updated_at`)을 읽는 쪽이
+다수파이고(`getDisplayInfo`·`findDisplayInfoByIds`·`search`·`listCanonicalPgWorkspaces`),
+**블롭 테이블**(`workspace_logo_blobs.updated_at`)을 조회하는 쪽은 `findById` 하나다
+(`lib/server/repositories/drizzle/workspace.ts` 의 별도 SELECT). 쓰기는
+`app/api/workspace/[id]/avatar/route.ts` 가 **트랜잭션 없이 두 문장으로** 한다 —
+`logoRepo.upsert()` 다음 `setLogoUpdatedAt()`, 삭제는 `remove()` 다음 `setLogoUpdatedAt(null)`.
+둘 사이에서 실패하면 두 출처가 갈린다.
+
+**이 갈라짐 자체는 선존재**지만, 로고 신원 수정(v0.9.2.0)이 PG 딜룸 로더를 `findById` →
+`getDisplayInfo` 로 옮기면서 **한 화면 안의 불일치**를 새로 만들었다: PG 딜룸은
+`RfpBriefPanel`/`BidContextStrip`(이제 컬럼)과 채팅 레일(`conversationLoaders.ts` 의
+`loadConversationThread` → 여전히 `findById`, 블롭)이 **같은 구매사 워크스페이스**를 나란히
+그린다. 그 전에는 둘 다 `findById` 라 항상 일치했다. 부분 실패 후 사용자는 브리프에는
+이니셜, 바로 옆 채팅에는 로고를 보게 된다.
+
+되돌리지 않은 이유: 컬럼이 다수파 출처이고 `findById` 가 예외다(게다가 `findById` 는
+멤버·bizProfile 까지 하이드레이트하는 무거운 조회다). 방향은 컬럼이 맞다.
+
+닫는 법(둘 중 하나, 둘 다 이 PR 범위 밖):
+① **쓰기를 원자화** — 근본 원인. 단 API 라우트에서 `getDb()` 를 부르면 repo-boundary 가드에
+   걸리므로(`lib/server/services/**` 밖 호출 금지) 로고 쓰기를 서비스로 올려야 한다.
+② **읽기를 통일** — `conversationLoaders.ts` 의 남은 `findById` 로고 소비처를
+   `getDisplayInfo`/`findDisplayInfoByIds` 로 옮긴다. 더 좁지만 ①을 남긴다.
+①이 원인에 가깝다. (발견: v0.9.2.0 /ship red-team 리뷰)
+
 ### 워크스페이스 정렬 변경이 chat.ts/shell-access.ts의 순서 의존 로직에 준 부수효과 (P4)
 사이드바 워크스페이스 스위처 드랍다운을 PG우선+이름순으로 정렬하려고 `WorkspaceRepo.listForUser`/`listAllWorkspacesForMaster`의 `ORDER BY`를 리포지토리 레이어에서 바꿨다(v0.4.28.2). 이 두 메서드 결과가 표시 목적 외에도 쓰이는 곳이 있다: ① `chat.ts`의 `counterpartyEmail`로 채팅을 시작하는 경로가 `memberships.find(m => m.type === wantType)`로 첫 매칭 워크스페이스를 고르는데, 동일 타입 멤버십이 여러 개인 유저는 이제 가입순 대신 이름순으로 뽑힌다. ② `shell-access.ts`의 `workspaces.find(...) ?? workspaces[0]` fallback(세션의 workspaceId가 현재 멤버십 목록에 없는 드문 경우)도 동일하게 영향받는다. 두 경우 모두 동일 타입 멤버십이 여러 개인 유저에게만 해당하는 좁은 엣지 케이스라 리스크를 감수하고 그대로 배포하기로 결정(/ship 적대 리뷰에서 발견, 사용자 확인 후 수용). 후속: 필요해지면 정렬을 리포지토리 레이어 대신 WorkspaceSwitcher 클라이언트 쪽으로 옮겨 두 소비처의 원래 순서 의미를 보존. (발견: /ship 적대 리뷰 2026-07-29)
 
