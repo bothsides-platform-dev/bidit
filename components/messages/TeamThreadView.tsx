@@ -20,7 +20,6 @@ import { ArrowUpIcon } from '@/components/icons';
 import { ACCEPT_EXT } from '@/lib/server/storage/constants';
 import { sendTeamMessageAction } from '@/lib/server/actions/chat/sendTeamMessageAction';
 import { markTeamThreadReadAction } from '@/lib/server/actions/chat/markTeamThreadReadAction';
-import { useMarkReadWhileVisible } from '@/lib/hooks/useMarkReadWhileVisible';
 import { markThreadReadLocal } from '@/lib/hooks/useNotifications';
 import { useOpenThreadRegistration } from '@/lib/chat/open-threads';
 import { teamThreadLink } from '@/lib/chat/thread-link';
@@ -31,6 +30,7 @@ import { MessageBubble } from './MessageBubble';
 import { ComposerAttachmentChips } from './ComposerAttachmentChips';
 import { useComposerAttachments, toReadyMessageAttachments } from './useComposerAttachments';
 import { useStickToBottom } from './useStickToBottom';
+import { useThreadReadTracking } from './useThreadReadTracking';
 import { promoteSentMessage, removeMessage, applyLiveEcho } from './optimistic-thread';
 import { computeMessageGrouping } from './message-grouping';
 import { MorphFlightLayer } from './MorphFlightLayer';
@@ -94,8 +94,10 @@ export function TeamThreadView({ rfpId, workspaceId, viewerUserId, viewerAvatarU
 
   // 스레드가 열려 보이는 동안 읽음 처리를 이어간다 — ThreadView 와 같은 훅.
   // 마운트 1회였을 때는 켜 둔 채 동료 메시지를 받으면 배지가 남았다.
-  const markRead = useMarkReadWhileVisible({
-    key: rfpId,
+  const markRead = useThreadReadTracking({
+    threadKey: rfpId,
+    listRef,
+    bottomRef,
     run: (id) => {
       // ThreadView 와 같은 이유 — 스토어를 로컬에서도 내려야 배지가 꺼진다.
       markThreadReadLocal(teamThreadLink(id));

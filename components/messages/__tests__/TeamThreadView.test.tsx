@@ -12,6 +12,26 @@ import { isThreadOpen } from '@/lib/chat/open-threads';
 
 if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
 
+// 하단 센티널 가시성 관찰자 — 읽음의 두 번째 게이트. jsdom 에 없어 스텁한다.
+type IoCb = (entries: { isIntersecting: boolean }[]) => void;
+const intersectionObservers: { fire: (v: boolean) => void }[] = [];
+class IntersectionObserverStub {
+  constructor(cb: IoCb) {
+    intersectionObservers.push({ fire: (v) => cb([{ isIntersecting: v }]) });
+  }
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+vi.stubGlobal('IntersectionObserver', IntersectionObserverStub);
+
+function scrollAwayFromBottom(): void {
+  for (const o of intersectionObservers) o.fire(false);
+}
+function scrollBackToBottom(): void {
+  for (const o of intersectionObservers) o.fire(true);
+}
+
 const sendTeamMessageAction = vi.fn();
 vi.mock('@/lib/server/actions/chat/sendTeamMessageAction', () => ({
   sendTeamMessageAction: (...args: unknown[]) => sendTeamMessageAction(...args),
@@ -85,6 +105,7 @@ beforeEach(() => {
   channelOptions = {};
   channelResult = { connected: null };
   vi.mocked(markTeamThreadReadAction).mockClear();
+  intersectionObservers.length = 0;
 });
 
 import { TeamThreadView } from '../TeamThreadView';
@@ -179,6 +200,48 @@ describe('TeamThreadView — 렌더', () => {
         createdAt: '2026-06-10T07:00:00.000Z',
       }),
     );
+
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(2));
+  });
+
+  it('위로 스크롤해 최신 메시지가 화면에 없으면 읽음 처리하지 않는다', async () => {
+    render(base({ viewerUserId: 'u-me' }));
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1));
+
+    act(() => scrollAwayFromBottom());
+    act(() =>
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'tm-offscreen',
+        body: '화면 밖 동료 메시지',
+        authorUserId: 'u-mate',
+        authorName: '이동료',
+        createdAt: '2026-06-10T07:03:00.000Z',
+      }),
+    );
+
+    expect(await screen.findByText('화면 밖 동료 메시지')).toBeInTheDocument();
+    expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('아래로 다시 내려와 최신 메시지가 보이면 그때 읽음 처리한다', async () => {
+    render(base({ viewerUserId: 'u-me' }));
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1));
+
+    act(() => scrollAwayFromBottom());
+    act(() =>
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'tm-catchup',
+        body: '나중에 볼 동료 메시지',
+        authorUserId: 'u-mate',
+        authorName: '이동료',
+        createdAt: '2026-06-10T07:04:00.000Z',
+      }),
+    );
+    expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1);
+
+    act(() => scrollBackToBottom());
 
     await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(2));
   });

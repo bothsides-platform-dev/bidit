@@ -106,7 +106,7 @@ describe('useMarkReadWhileVisible', () => {
     run.mockClear();
 
     act(() => {
-      result.current();
+      result.current.markRead();
       vi.runAllTimers();
     });
 
@@ -123,7 +123,7 @@ describe('useMarkReadWhileVisible', () => {
 
     act(() => {
       setVisibility('hidden');
-      result.current();
+      result.current.markRead();
       vi.runAllTimers();
     });
 
@@ -140,8 +140,8 @@ describe('useMarkReadWhileVisible', () => {
 
     act(() => {
       setVisibility('hidden');
-      result.current();
-      result.current();
+      result.current.markRead();
+      result.current.markRead();
       vi.runAllTimers();
     });
     expect(run).not.toHaveBeenCalled();
@@ -180,9 +180,9 @@ describe('useMarkReadWhileVisible', () => {
     run.mockClear();
 
     act(() => {
-      result.current();
-      result.current();
-      result.current();
+      result.current.markRead();
+      result.current.markRead();
+      result.current.markRead();
       vi.runAllTimers();
     });
 
@@ -220,7 +220,7 @@ describe('useMarkReadWhileVisible', () => {
     // conv-1 도착이 디바운스 대기 중인 상태에서 대화를 갈아탄다. 그 예약이 살아
     // 남으면 conv-2 를 읽었다고 두 번 말하게 된다.
     act(() => {
-      result.current();
+      result.current.markRead();
     });
     rerender({ key: 'conv-2' });
     act(() => {
@@ -229,6 +229,100 @@ describe('useMarkReadWhileVisible', () => {
 
     expect(run).toHaveBeenCalledTimes(1);
     expect(run).toHaveBeenCalledWith('conv-2');
+  });
+
+  // ── isOnScreen 게이트 ───────────────────────────────────────────────────
+  // 탭이 보이는 것만으로는 "봤다"가 아니다. 긴 대화를 위로 올려둔 채 새 메시지를
+  // 받으면 그 메시지는 화면에 없고, 그걸 읽음으로 치면 상대에게 거짓 영수증이
+  // 나간다. 두 번째 게이트가 그 절반을 막는다.
+
+  it('does NOT mark read on arrival when the newest message is off screen', () => {
+    const run = vi.fn();
+    const { result } = renderHook(() =>
+      useMarkReadWhileVisible({ key: 'conv-1', run, isOnScreen: () => false }),
+    );
+    act(() => {
+      vi.runAllTimers();
+    });
+    run.mockClear();
+
+    act(() => {
+      result.current.markRead();
+      vi.runAllTimers();
+    });
+
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('catches up once when the newest message scrolls back into view', () => {
+    const run = vi.fn();
+    let onScreen = false;
+    const { result } = renderHook(() =>
+      useMarkReadWhileVisible({ key: 'conv-1', run, isOnScreen: () => onScreen }),
+    );
+    run.mockClear();
+
+    act(() => {
+      result.current.markRead();
+      result.current.markRead();
+      vi.runAllTimers();
+    });
+    expect(run).not.toHaveBeenCalled();
+
+    onScreen = true;
+    act(() => {
+      result.current.resume();
+      vi.runAllTimers();
+    });
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledWith('conv-1');
+  });
+
+  it('resume() does nothing when nothing was missed', () => {
+    const run = vi.fn();
+    const { result } = renderHook(() =>
+      useMarkReadWhileVisible({ key: 'conv-1', run, isOnScreen: () => true }),
+    );
+    act(() => {
+      vi.runAllTimers();
+    });
+    run.mockClear();
+
+    act(() => {
+      result.current.resume();
+      vi.runAllTimers();
+    });
+
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('does NOT mark read on mount when the thread opens scrolled away from the bottom', () => {
+    const run = vi.fn();
+    renderHook(() =>
+      useMarkReadWhileVisible({ key: 'conv-1', run, isOnScreen: () => false }),
+    );
+
+    act(() => {
+      vi.runAllTimers();
+    });
+
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('still marks read on arrival when isOnScreen is omitted (default: on screen)', () => {
+    const run = vi.fn();
+    const { result } = renderHook(() => useMarkReadWhileVisible({ key: 'conv-1', run }));
+    act(() => {
+      vi.runAllTimers();
+    });
+    run.mockClear();
+
+    act(() => {
+      result.current.markRead();
+      vi.runAllTimers();
+    });
+
+    expect(run).toHaveBeenCalledTimes(1);
   });
 
   it('does not run after unmount', () => {
@@ -242,7 +336,7 @@ describe('useMarkReadWhileVisible', () => {
     run.mockClear();
 
     act(() => {
-      result.current();
+      result.current.markRead();
     });
     unmount();
     act(() => {

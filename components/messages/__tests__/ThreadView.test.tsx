@@ -14,6 +14,29 @@ class ResizeObserverStub {
 vi.stubGlobal('ResizeObserver', ResizeObserverStub);
 if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
 
+// 하단 센티널 가시성 관찰자 — 읽음의 두 번째 게이트를 테스트가 직접 몬다.
+// jsdom 에는 IntersectionObserver 가 없다.
+type IoCb = (entries: { isIntersecting: boolean }[]) => void;
+const intersectionObservers: { fire: (v: boolean) => void }[] = [];
+class IntersectionObserverStub {
+  constructor(cb: IoCb) {
+    intersectionObservers.push({ fire: (v) => cb([{ isIntersecting: v }]) });
+  }
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+vi.stubGlobal('IntersectionObserver', IntersectionObserverStub);
+
+/** 하단 센티널이 화면 밖으로 나갔다(= 사용자가 위로 스크롤했다). */
+function scrollAwayFromBottom(): void {
+  for (const o of intersectionObservers) o.fire(false);
+}
+/** 하단 센티널이 다시 보인다(= 사용자가 아래로 돌아왔다). */
+function scrollBackToBottom(): void {
+  for (const o of intersectionObservers) o.fire(true);
+}
+
 // sendChatMessageAction is a 'use server' action — it imports centrifugo/db
 // (server-only) and would break jsdom. Mock it so the composer can call it.
 const sendChatMessageAction = vi.fn();
@@ -167,6 +190,7 @@ beforeEach(() => {
   // 초안 보존이 localStorage 를 쓰므로 테스트 간 격리를 위해 매번 비운다.
   window.localStorage.clear();
   channelOptions = {};
+  intersectionObservers.length = 0;
   readReceiptInputs.length = 0;
   channelResult = { typingUserIds: [], sendTyping, connected: null };
   workspacePresenceResult = { online: false, activity: 'offline' };
@@ -255,6 +279,52 @@ describe('ThreadView', () => {
         createdAt: '2026-05-27T06:00:00.000Z',
       });
     });
+
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(2));
+    expect(markConversationReadAction).toHaveBeenLastCalledWith({ conversationId: 'conv-1' });
+  });
+
+  it('위로 스크롤해 최신 메시지가 화면에 없으면 읽음 처리하지 않는다', async () => {
+    // 긴 대화를 위로 올려 과거 글을 읽는 중에 도착한 메시지는 눈에 보이지 않는다.
+    // 그걸 읽음으로 치면 상대에게 거짓 읽음 영수증이 나간다.
+    render(base());
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(1));
+
+    act(() => scrollAwayFromBottom());
+    act(() => {
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'live-offscreen',
+        body: '화면 밖 메시지',
+        authorWsId: 'pg-1',
+        rfpId: null,
+        createdAt: '2026-05-27T06:03:00.000Z',
+      });
+    });
+
+    // 도착 자체는 렌더된다(위에 pill 이 뜬다) — 읽음만 미룬다.
+    expect(await screen.findByText('화면 밖 메시지')).toBeInTheDocument();
+    expect(markConversationReadAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('아래로 다시 내려와 최신 메시지가 보이면 그때 읽음 처리한다', async () => {
+    render(base());
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(1));
+
+    act(() => scrollAwayFromBottom());
+    act(() => {
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'live-catchup',
+        body: '나중에 볼 메시지',
+        authorWsId: 'pg-1',
+        rfpId: null,
+        createdAt: '2026-05-27T06:04:00.000Z',
+      });
+    });
+    expect(markConversationReadAction).toHaveBeenCalledTimes(1);
+
+    act(() => scrollBackToBottom());
 
     await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(2));
     expect(markConversationReadAction).toHaveBeenLastCalledWith({ conversationId: 'conv-1' });
