@@ -19,7 +19,7 @@ import { ContextPanel } from '../ContextPanel';
 describe('ContextPanel', () => {
   it('rfpContext 없으면 RFP 섹션을 렌더하지 않는다', () => {
     render(<ContextPanel conversationId="conv-1" />);
-    expect(screen.queryByText('연결된 RFP')).not.toBeInTheDocument();
+    expect(screen.queryByText('견적 요청')).not.toBeInTheDocument();
     expect(screen.getByText('공유 파일')).toBeInTheDocument();
   });
 
@@ -30,7 +30,7 @@ describe('ContextPanel', () => {
         rfpContext={{ code: 'P-2605-0042', title: '온라인 결제 견적', status: 'sent', deadline: '2026-07-01T00:00:00.000Z' }}
       />,
     );
-    expect(screen.getByText('연결된 RFP')).toBeInTheDocument();
+    expect(screen.getByText('견적 요청')).toBeInTheDocument();
     expect(screen.getByText('P-2605-0042')).toBeInTheDocument();
     expect(screen.getByText('온라인 결제 견적')).toBeInTheDocument();
   });

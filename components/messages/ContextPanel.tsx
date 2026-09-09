@@ -21,7 +21,7 @@ function RfpContextCard({ rfpContext }: { rfpContext: RfpContext }) {
   return (
     <section className="border-b border-[var(--md-sys-color-outline-variant)] p-3">
       <p className="mb-2 text-xs font-medium uppercase tracking-wide text-[var(--md-sys-color-on-surface-variant)]">
-        연결된 RFP
+        견적 요청
       </p>
       <div className="rounded-[var(--md-sys-shape-small)] border border-[var(--md-sys-color-outline-variant)] p-2.5">
         <p className="md-numeric text-xs text-[var(--md-sys-color-primary)]">

@@ -437,6 +437,7 @@ describe('xl 컨텍스트 패널', () => {
     await act(async () => {
       await user.click(screen.getByRole('button', { name: /OO페이/ }));
     });
+    expect(screen.getByText('대화 정보')).toBeInTheDocument();
     expect(screen.getByTestId('context-panel')).toBeInTheDocument();
     expect(screen.getByTestId('context-panel')).toHaveAttribute('data-conversation', 'conv-1');
   });
