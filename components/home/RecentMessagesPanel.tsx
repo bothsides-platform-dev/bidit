@@ -3,7 +3,7 @@ import { Users } from 'lucide-react';
 import { EmptyState } from '@/components/primitives/EmptyState';
 import { EnvelopeIcon } from '@/components/icons';
 import { AvatarWithPresence } from '@/components/presence/AvatarWithPresence';
-import { UNREAD_LABEL } from '@/lib/types/notification';
+import { unreadCountLabel, UNREAD_LABEL } from '@/lib/types/notification';
 import { conversationThreadLink, teamThreadLink } from '@/lib/chat/thread-link';
 import type { InboxListItem } from '@/lib/server/actions/chat/inboxLoader';
 
@@ -45,10 +45,9 @@ export function RecentMessagesPanel({
         메시지
         {unreadCount > 0 && (
           <span
-            aria-label={`읽지 않은 메시지 ${unreadCount}개`}
-            className="md-numeric inline-flex h-5 min-w-5 items-center justify-center rounded-[var(--md-sys-shape-full)] bg-[var(--md-sys-color-primary)] px-1.5 text-xs font-medium text-[var(--md-sys-color-on-primary)]"
+            className="md-numeric inline-flex h-5 min-w-5 items-center justify-center whitespace-nowrap rounded-[var(--md-sys-shape-full)] bg-[var(--md-sys-color-primary)] px-1.5 text-xs font-medium text-[var(--md-sys-color-on-primary)]"
           >
-            {unreadCount}
+            {unreadCountLabel(unreadCount)}
           </span>
         )}
       </header>

@@ -118,11 +118,18 @@ test.describe.serial('Scenario A — buyer creates and sends RFP', () => {
     // URL/seed identifier is the human code; FK columns + dedupe keys use the uuid.
     const rfpUuid = await rfpUuidFromCode(rfpId);
 
-    // 비교 영역(FocusComparison)은 제출된 견적이 0건이면 EmptyState 를 그린다
-    // (see components/rfp/comparison/FocusComparison.tsx).
-    await expect(
-      page.getByText('견적을 기다리고 있어요'),
-    ).toBeVisible({ timeout: 10_000 });
+    // 비교 영역(FocusComparison)은 제출된 견적이 0건이면 진행 상황과 다음 행동을
+    // 함께 보여준다. 제목만 확인하면 CTA 배선이 끊겨도 통과하므로, 생성 흐름에서
+    // 확정된 초대 수와 PG 관리 탭 이동까지 사용자 seam 으로 검증한다.
+    await expect(page.getByText('아직 도착한 견적이 없어요')).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.getByText('초대 3곳')).toBeVisible();
+    await page.getByRole('button', { name: '초대 현황 보기' }).click();
+    await expect(page.getByRole('tab', { name: 'PG 관리' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
 
     // ── 6. DB assertions ─────────────────────────────────────────
     const rfpRows = await db.execute<{ id: string; status: string }>(

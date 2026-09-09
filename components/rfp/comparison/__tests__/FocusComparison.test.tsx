@@ -151,7 +151,99 @@ describe('FocusComparison', () => {
 
   it('shows an empty state when no bids have arrived', () => {
     render(<FocusComparison {...baseProps} bids={[]} />);
-    expect(screen.getByText(/견적을 기다리고 있어요/)).toBeInTheDocument();
+    expect(screen.getByText('아직 도착한 견적이 없어요')).toBeInTheDocument();
+  });
+
+  it('견적이 없으면 초대 현황과 마감을 보여주고 PG 관리로 이동할 수 있다', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-09T03:00:00+09:00'));
+    const onManageInvitations = vi.fn();
+
+    try {
+      render(
+        <FocusComparison
+          {...baseProps}
+          bids={[]}
+          invitedPgCount={3}
+          deadline="2026-09-14T23:59:59+09:00"
+          onManageInvitations={onManageInvitations}
+        />,
+      );
+
+      expect(screen.getByText('아직 도착한 견적이 없어요')).toBeInTheDocument();
+      expect(screen.getByText(/PG사/, { selector: 'p' })).toHaveTextContent(
+        'PG사 3곳에 요청했어요',
+      );
+      expect(screen.getByText('D-5')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '초대 현황 보기' }));
+      expect(onManageInvitations).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('편집할 수 없고 초대도 없으면 PG사를 추가할 수 있다고 안내하지 않는다', () => {
+    render(
+      <FocusComparison
+        {...baseProps}
+        bids={[]}
+        invitedPgCount={0}
+        canEditInvitations={false}
+        onManageInvitations={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'PG 관리 보기' })).toBeInTheDocument();
+    expect(screen.queryByText(/PG사를 추가하면/)).not.toBeInTheDocument();
+  });
+
+  it('발송 대기 PG만 있으면 요청 완료가 아니라 초대 발송이 필요하다고 안내한다', () => {
+    render(
+      <FocusComparison
+        {...baseProps}
+        bids={[]}
+        invitedPgCount={0}
+        draftPgCount={2}
+        onManageInvitations={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.tagName === 'P' &&
+          element.textContent === 'PG사 2곳을 추가했어요. 초대를 보내면 견적을 받을 수 있어요.',
+      ),
+    ).toHaveTextContent(
+      'PG사 2곳을 추가했어요. 초대를 보내면 견적을 받을 수 있어요.',
+    );
+    expect(
+      screen.getByText(
+        (_, element) => element?.tagName === 'SPAN' && element.textContent === '발송 대기 2곳',
+      ),
+    ).toHaveTextContent('발송 대기 2곳');
+    expect(screen.queryByText(/요청했어요/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '초대 현황 보기' })).toBeInTheDocument();
+  });
+
+  it('마감이 지난 빈 견적 화면은 마감 상태를 한 번만 표시한다', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-09T03:00:00+09:00'));
+
+    try {
+      render(
+        <FocusComparison
+          {...baseProps}
+          bids={[]}
+          deadline="2026-09-08T23:59:59+09:00"
+          onManageInvitations={vi.fn()}
+        />,
+      );
+
+      expect(screen.getAllByText('마감', { selector: 'span' })).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('구간 셀렉터를 바꾸면 카드 요율 표시가 그 구간 값으로 바뀐다', () => {
