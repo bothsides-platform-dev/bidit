@@ -19,7 +19,7 @@ import {
 import { setupWorkspaceActionEnv, teardownWorkspaceActionEnv } from './_setup';
 import { workspaceInvitations } from '@/lib/db/schema';
 import { generateToken, hashToken } from '@/lib/server/token';
-import { inviteWorkspaceMemberAction } from '../inviteWorkspaceMemberAction';
+import { inviteWorkspaceMemberAction as rawInviteWorkspaceMemberAction } from '../inviteWorkspaceMemberAction';
 
 vi.mock('@/lib/server/outbox/templates/workspaceInvited', () => ({
   renderWorkspaceInvited: async () => '<p>invited</p>',
@@ -37,7 +37,24 @@ vi.mock('@/lib/auth/session', () => ({
       : Promise.reject(new Error('UNAUTHENTICATED')),
 }));
 
-import { cancelWorkspaceInviteAction } from '../cancelWorkspaceInviteAction';
+import { cancelWorkspaceInviteAction as rawCancelWorkspaceInviteAction } from '../cancelWorkspaceInviteAction';
+
+type InviteInput = Omit<Parameters<typeof rawInviteWorkspaceMemberAction>[0], 'workspaceId'>;
+type CancelInput = Omit<Parameters<typeof rawCancelWorkspaceInviteAction>[0], 'workspaceId'>;
+
+function inviteWorkspaceMemberAction(input: InviteInput) {
+  return rawInviteWorkspaceMemberAction({
+    ...input,
+    workspaceId: sessionRef.value?.user.workspaceId ?? '',
+  });
+}
+
+function cancelWorkspaceInviteAction(input: CancelInput) {
+  return rawCancelWorkspaceInviteAction({
+    ...input,
+    workspaceId: sessionRef.value?.user.workspaceId ?? '',
+  });
+}
 
 let db: PgliteDB;
 

@@ -1,9 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { markRead, publishChatEvent, requireActiveWorkspace } = vi.hoisted(() => ({
-  markRead: vi.fn(),
-  publishChatEvent: vi.fn(),
-  requireActiveWorkspace: vi.fn(),
+const { markRead, publishChatEvent, requireActiveWorkspace, markChatThreadRead } = vi.hoisted(
+  () => ({
+    markRead: vi.fn(),
+    publishChatEvent: vi.fn(),
+    requireActiveWorkspace: vi.fn(),
+    markChatThreadRead: vi.fn(),
+  }),
+);
+
+vi.mock('@/lib/server/repositories/factory', () => ({
+  getNotificationRepo: vi.fn().mockResolvedValue({ markChatThreadRead }),
 }));
 
 vi.mock('../_shared', () => ({
@@ -26,6 +33,8 @@ describe('markConversationReadAction', () => {
       readAt: '2026-09-05T12:00:00.000Z',
     });
     publishChatEvent.mockReset();
+    markChatThreadRead.mockReset();
+    markChatThreadRead.mockResolvedValue(undefined);
     requireActiveWorkspace.mockReset();
     requireActiveWorkspace.mockResolvedValue({
       ok: true,
@@ -49,6 +58,41 @@ describe('markConversationReadAction', () => {
       viewer: { userId: 'user-1', activeWorkspaceId: 'workspace-1' },
     });
     expect(publishChatEvent).not.toHaveBeenCalled();
+  });
+
+  it('그 대화의 대기 중 인앱 알림도 함께 읽음 처리한다', async () => {
+    await markConversationReadAction({
+      conversationId: '00000000-0000-4000-8000-000000000001',
+    });
+
+    expect(markChatThreadRead).toHaveBeenCalledWith(
+      'user-1',
+      'workspace-1',
+      '/messages?c=00000000-0000-4000-8000-000000000001',
+    );
+  });
+
+  it('읽음 cursor 갱신이 실패하면 알림을 건드리지 않는다', async () => {
+    markRead.mockResolvedValueOnce({ ok: false, error: 'FORBIDDEN' });
+
+    const result = await markConversationReadAction({
+      conversationId: '00000000-0000-4000-8000-000000000001',
+    });
+
+    expect(result).toEqual({ ok: false, error: 'FORBIDDEN' });
+    expect(markChatThreadRead).not.toHaveBeenCalled();
+  });
+
+  it('알림 정리가 실패해도 읽음 처리는 성공으로 돌려준다', async () => {
+    // 배지 정리는 부수효과다 — 여기서 던지면 cursor 는 이미 전진했는데 화면은
+    // 실패로 보이고, 재시도해도 같은 자리에서 또 죽는다.
+    markChatThreadRead.mockRejectedValueOnce(new Error('db down'));
+
+    const result = await markConversationReadAction({
+      conversationId: '00000000-0000-4000-8000-000000000001',
+    });
+
+    expect(result).toEqual({ ok: true, readAt: '2026-09-05T12:00:00.000Z' });
   });
 
   it.each([

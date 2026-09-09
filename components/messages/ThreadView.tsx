@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/primitives/Chip';
@@ -13,6 +13,9 @@ import { PaperclipIcon, ArrowUpIcon, ArrowDownIcon, ChevronLeftIcon, CheckIcon, 
 import { DRAFT_OWNER_ID, ACCEPT_EXT } from '@/lib/server/storage/constants';
 import { sendChatMessageAction } from '@/lib/server/actions/chat/sendChatMessageAction';
 import { markConversationReadAction } from '@/lib/server/actions/chat/markConversationReadAction';
+import { markThreadReadLocal } from '@/lib/hooks/useNotifications';
+import { useOpenThreadRegistration } from '@/lib/chat/open-threads';
+import { conversationThreadLink } from '@/lib/chat/thread-link';
 import { useChatChannel } from '@/lib/hooks/useChatChannel';
 import { useConversationReadReceipt } from '@/lib/chat/read-state/client';
 import { useWorkspacePresence } from '@/components/presence/WorkspacePresenceProvider';
@@ -29,6 +32,7 @@ import { ContextPanel } from './ContextPanel';
 import { useComposerAttachments, toReadyMessageAttachments } from './useComposerAttachments';
 import { ChatComposerTextarea } from './ChatComposerTextarea';
 import { useStickToBottom } from './useStickToBottom';
+import { useThreadReadTracking } from './useThreadReadTracking';
 import { useStringDraft } from './useStringDraft';
 import { promoteSentMessage, removeMessage, applyLiveEcho } from './optimistic-thread';
 import { computeMessageGrouping } from './message-grouping';
@@ -177,6 +181,27 @@ export function ThreadView({
     messages: localMessages,
   });
 
+  // Mark-read while the thread is open and visible: clears my unread and
+  // publishes a read receipt to the counterparty. Fires on open, on every
+  // counterparty message that lands while visible, and once on returning from a
+  // hidden tab — 예전에는 마운트 1회뿐이라 대화창을 켜 둔 채 메시지를 받으면
+  // 배지도 읽음 영수증도 그대로였다(VoC).
+  const markRead = useThreadReadTracking({
+    threadKey: conversationId,
+    listRef,
+    bottomRef,
+    run: (id) => {
+      // 서버가 같은 행을 곧바로 지우지만, 스토어는 마운트 1회만 hydrate 하므로
+      // 로컬에서도 내려야 사이드바 배지가 새로고침 전에 꺼진다.
+      markThreadReadLocal(conversationThreadLink(id));
+      void markConversationReadAction({ conversationId: id });
+    },
+  });
+
+  // 이 대화를 보고 있는 동안에는 같은 대화의 알림 토스트를 띄우지 않는다 —
+  // 메시지는 이미 눈앞에 말풍선으로 도착한다(VoC "대화에 사용자가 있는데도 알림").
+  useOpenThreadRegistration(conversationThreadLink(conversationId));
+
   // Live channel — graceful no-op when realtime is unconfigured (dev/tests):
   // typingUserIds empty, onMessage/onRead never fire, and the thread runs
   // entirely off the static loader + optimistic local append.
@@ -186,6 +211,8 @@ export function ThreadView({
       const id = data.id;
       const sender: ThreadMessage['sender'] =
         data.authorWsId === counterparty.workspaceId ? 'other' : 'self';
+      // 내 echo 로는 읽음을 갱신하지 않는다 — 상대가 보낸 것만 "봤다"의 대상이다.
+      if (sender === 'other') markRead();
       // Centrifugo recovery can redeliver, and handleSend may have already
       // promoted the pending bubble to this id → dedup. 본인 echo 면 tempId 로
       // 정확 매칭 후 확정 승격(append 하면 중복), 아니면 새로 append.
@@ -211,13 +238,6 @@ export function ThreadView({
     },
     onRead: readReceipt.accept,
   });
-
-  // Mark-read on open: clears my unread + publishes a read receipt to the
-  // counterparty. Once per conversation (MessageInbox keys ThreadView by
-  // conversationId so a switch remounts and re-fires).
-  useEffect(() => {
-    void markConversationReadAction({ conversationId });
-  }, [conversationId]);
 
   const totalAttachmentCount = useMemo(
     () => localMessages.reduce((sum, m) => sum + m.attachments.length, 0),

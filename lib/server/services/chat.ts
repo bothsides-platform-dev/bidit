@@ -11,6 +11,7 @@ import type {
   UserRepo,
   WorkspaceRepo,
 } from '@/lib/server/repositories/types';
+import { conversationThreadLink } from '@/lib/chat/thread-link';
 import { canWorkspaceAccessRfp } from '@/lib/server/rfp-access';
 import { emitAfterCommit } from '@/lib/server/notifications/dispatch';
 import { notify, type NotifyChannel } from '@/lib/server/notifications/notify';
@@ -211,6 +212,10 @@ export class ChatService {
       const digestScheduledAt = chatDigestWindowEnd(now);
       const inappWindowStart = new Date(chatDigestBucket(now) * CHAT_DIGEST_WINDOW_MS);
 
+      // 알림 행에는 대화 컬럼이 없다 — 이 링크가 곧 대화 키다(dedupe·읽음 정리·
+      // 토스트 억제가 전부 이걸 본다). 단일 출처는 lib/chat/thread-link.ts.
+      const threadLinkUrl = conversationThreadLink(conv.id);
+
       for (const m of recipients) {
         if (m.userId === actor.userId) continue;
 
@@ -218,6 +223,7 @@ export class ChatService {
         const alreadyNotified = await this.notifRepo.hasPendingChatNotification(
           m.userId,
           counterpartyWsId,
+          threadLinkUrl,
           inappWindowStart,
           tx,
         );
@@ -232,7 +238,7 @@ export class ChatService {
             type: 'chat.message',
             title: `${senderName}님의 새 메시지`,
             body: preview,
-            linkUrl: '/messages',
+            linkUrl: threadLinkUrl,
             email: {
               event: 'chat.message',
               subject: `[서포트비] ${senderName}님의 새 메시지`,

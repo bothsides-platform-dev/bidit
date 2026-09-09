@@ -33,7 +33,16 @@ vi.mock('@/lib/auth/session', () => ({
       : Promise.reject(new Error('UNAUTHENTICATED')),
 }));
 
-import { removeWorkspaceMemberAction } from '../removeWorkspaceMemberAction';
+import { removeWorkspaceMemberAction as rawRemoveWorkspaceMemberAction } from '../removeWorkspaceMemberAction';
+
+type RemoveInput = Omit<Parameters<typeof rawRemoveWorkspaceMemberAction>[0], 'workspaceId'>;
+
+function removeWorkspaceMemberAction(input: RemoveInput) {
+  return rawRemoveWorkspaceMemberAction({
+    ...input,
+    workspaceId: sessionRef.value?.user.workspaceId ?? '',
+  });
+}
 
 let db: PgliteDB;
 

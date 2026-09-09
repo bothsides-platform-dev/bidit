@@ -315,6 +315,162 @@ describe('useNotifications — 라이브 알림 도착 시 toast', () => {
     expect(toast).not.toHaveBeenCalled()
   })
 
+  it('지금 열려 있는 대화의 알림은 toast 하지 않는다', async () => {
+    const { toast } = await import('@/lib/toast')
+    const { registerOpenThread } = await import('@/lib/chat/open-threads')
+    const { act } = await setupHook()
+
+    const release = registerOpenThread('/messages?c=conv-open')
+    try {
+      await act(async () => {
+        EventSourceStub.latest?.onmessage?.(
+          new MessageEvent('message', {
+            data: JSON.stringify({
+              ...(makeNotif('n-open', '보고 있는 대화 메시지') as object),
+              type: 'chat.message',
+              linkUrl: '/messages?c=conv-open',
+            }),
+          }),
+        )
+      })
+
+      expect(toast).not.toHaveBeenCalled()
+    } finally {
+      release()
+    }
+  })
+
+  it('다른 대화의 알림은 그대로 toast 한다', async () => {
+    const { toast } = await import('@/lib/toast')
+    const { registerOpenThread } = await import('@/lib/chat/open-threads')
+    const { act } = await setupHook()
+
+    const release = registerOpenThread('/messages?c=conv-open')
+    try {
+      await act(async () => {
+        EventSourceStub.latest?.onmessage?.(
+          new MessageEvent('message', {
+            data: JSON.stringify({
+              ...(makeNotif('n-other', '다른 대화 메시지') as object),
+              type: 'chat.message',
+              linkUrl: '/messages?c=conv-other',
+            }),
+          }),
+        )
+      })
+
+      expect(toast).toHaveBeenCalledWith('다른 대화 메시지')
+    } finally {
+      release()
+    }
+  })
+
+  it('스레드를 읽으면 그 스레드 알림만 로컬에서도 읽음으로 내린다(배지)', async () => {
+    const { act } = await setupHook()
+    const { markThreadReadLocal, useNotificationStoreForTest } = await import(
+      '@/lib/hooks/useNotifications'
+    )
+
+    const fire = async (id: string, link: string) => {
+      await act(async () => {
+        EventSourceStub.latest?.onmessage?.(
+          new MessageEvent('message', {
+            data: JSON.stringify({
+              ...(makeNotif(id, '메시지') as object),
+              type: 'chat.message',
+              linkUrl: link,
+            }),
+          }),
+        )
+      })
+    }
+    await fire('n-here', '/messages?c=conv-here')
+    await fire('n-there', '/messages?c=conv-there')
+
+    await act(async () => {
+      markThreadReadLocal('/messages?c=conv-here')
+    })
+
+    const byId = new Map(
+      useNotificationStoreForTest
+        .getState()
+        .notifications.map((n) => [n.id, n.status]),
+    )
+    expect(byId.get('n-here')).toBe('read')
+    expect(byId.get('n-there')).toBe('sent')
+  })
+
+  it('이미 읽은 알림은 markThreadReadLocal 이 다시 건드리지 않는다', async () => {
+    // canMarkRead 가드 — 없으면 readAt 이 열람할 때마다 앞으로 밀려
+    // "언제 읽었나"가 마지막 열람 시각으로 덮인다(서버 isNull(readAt) 과 짝).
+    const { act } = await setupHook()
+    const { markThreadReadLocal, useNotificationStoreForTest } = await import(
+      '@/lib/hooks/useNotifications'
+    )
+
+    await act(async () => {
+      EventSourceStub.latest?.onmessage?.(
+        new MessageEvent('message', {
+          data: JSON.stringify({
+            ...(makeNotif('n-done', '이미 읽음') as object),
+            type: 'chat.message',
+            linkUrl: '/messages?c=conv-done',
+            status: 'read',
+            readAt: '2020-01-01T00:00:00.000Z',
+          }),
+        }),
+      )
+    })
+
+    await act(async () => {
+      markThreadReadLocal('/messages?c=conv-done')
+    })
+
+    const row = useNotificationStoreForTest
+      .getState()
+      .notifications.find((n) => n.id === 'n-done')
+    expect(row?.readAt).toBe('2020-01-01T00:00:00.000Z')
+  })
+
+  it('억제된 toast 는 coalesce 윈도우를 소모하지 않는다', async () => {
+    // 순서가 중요하다: isThreadOpen 검사가 lastToastAt 쓰기보다 앞이라, 보고 있는
+    // 대화 때문에 삼킨 알림이 바로 뒤 다른 알림의 toast 를 4초간 잡아먹지 않는다.
+    const { toast } = await import('@/lib/toast')
+    const { registerOpenThread } = await import('@/lib/chat/open-threads')
+    const { act } = await setupHook()
+
+    const release = registerOpenThread('/messages?c=conv-open')
+    try {
+      await act(async () => {
+        EventSourceStub.latest?.onmessage?.(
+          new MessageEvent('message', {
+            data: JSON.stringify({
+              ...(makeNotif('n-swallowed', '삼켜진 알림') as object),
+              type: 'chat.message',
+              linkUrl: '/messages?c=conv-open',
+            }),
+          }),
+        )
+      })
+      await act(async () => {
+        EventSourceStub.latest?.onmessage?.(
+          new MessageEvent('message', {
+            data: JSON.stringify({
+              ...(makeNotif('n-next', '다음 알림') as object),
+              type: 'chat.message',
+              linkUrl: '/messages?c=conv-elsewhere',
+            }),
+          }),
+        )
+      })
+
+      expect(toast).toHaveBeenCalledTimes(1)
+      expect(toast).toHaveBeenCalledWith('다음 알림')
+    } finally {
+      release()
+    }
+  })
+
   it('coalesce 윈도우 내 연속 알림은 toast 를 1회만 발화한다 (F2)', async () => {
     vi.spyOn(Date, 'now').mockReturnValue(1_000_000)
     const { toast } = await import('@/lib/toast')

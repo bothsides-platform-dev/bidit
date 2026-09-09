@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import type { UseChatChannelResult } from '@/lib/hooks/useChatChannel';
 import type { ChatReadEvent } from '@/lib/chat/read-state/event';
 import { NEW_TAB_NOTICE } from '@/lib/a11y/link-notice';
+import { isThreadOpen } from '@/lib/chat/open-threads';
 
 class ResizeObserverStub {
   observe() {}
@@ -12,6 +13,29 @@ class ResizeObserverStub {
 }
 vi.stubGlobal('ResizeObserver', ResizeObserverStub);
 if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
+
+// 하단 센티널 가시성 관찰자 — 읽음의 두 번째 게이트를 테스트가 직접 몬다.
+// jsdom 에는 IntersectionObserver 가 없다.
+type IoCb = (entries: { isIntersecting: boolean }[]) => void;
+const intersectionObservers: { fire: (v: boolean) => void }[] = [];
+class IntersectionObserverStub {
+  constructor(cb: IoCb) {
+    intersectionObservers.push({ fire: (v) => cb([{ isIntersecting: v }]) });
+  }
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+vi.stubGlobal('IntersectionObserver', IntersectionObserverStub);
+
+/** 하단 센티널이 화면 밖으로 나갔다(= 사용자가 위로 스크롤했다). */
+function scrollAwayFromBottom(): void {
+  for (const o of intersectionObservers) o.fire(false);
+}
+/** 하단 센티널이 다시 보인다(= 사용자가 아래로 돌아왔다). */
+function scrollBackToBottom(): void {
+  for (const o of intersectionObservers) o.fire(true);
+}
 
 // sendChatMessageAction is a 'use server' action — it imports centrifugo/db
 // (server-only) and would break jsdom. Mock it so the composer can call it.
@@ -30,6 +54,12 @@ vi.mock('@/lib/server/actions/chat/listConversationAttachments', () => ({
 const markConversationReadAction = vi.fn();
 vi.mock('@/lib/server/actions/chat/markConversationReadAction', () => ({
   markConversationReadAction: (...args: unknown[]) => markConversationReadAction(...args),
+}));
+
+// 알림 스토어의 로컬 배지 정리 — 서버 액션 체인을 끌고 오므로 mock 한다.
+const markThreadReadLocal = vi.fn();
+vi.mock('@/lib/hooks/useNotifications', () => ({
+  markThreadReadLocal: (...args: unknown[]) => markThreadReadLocal(...args),
 }));
 
 // useChatChannel pulls in the real `centrifuge` SDK — mock it so jsdom stays
@@ -117,6 +147,7 @@ beforeEach(() => {
   // 초안 보존이 localStorage 를 쓰므로 테스트 간 격리를 위해 매번 비운다.
   window.localStorage.clear();
   channelOptions = {};
+  intersectionObservers.length = 0;
   readReceiptInputs.length = 0;
   channelResult = { typingUserIds: [], sendTyping, connected: null };
   workspacePresenceResult = { online: false, activity: 'offline' };
@@ -189,6 +220,139 @@ describe('ThreadView', () => {
       expect(markConversationReadAction).toHaveBeenCalledWith({ conversationId: 'conv-1' });
     });
     expect(markConversationReadAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('열려 있는 동안 상대 메시지가 오면 다시 읽음 처리한다', async () => {
+    render(base());
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'live-read-1',
+        body: '읽음 갱신 트리거',
+        authorWsId: 'pg-1', // counterparty
+        rfpId: null,
+        createdAt: '2026-05-27T06:00:00.000Z',
+      });
+    });
+
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(2));
+    expect(markConversationReadAction).toHaveBeenLastCalledWith({ conversationId: 'conv-1' });
+  });
+
+  it('위로 스크롤해 최신 메시지가 화면에 없으면 읽음 처리하지 않는다', async () => {
+    // 긴 대화를 위로 올려 과거 글을 읽는 중에 도착한 메시지는 눈에 보이지 않는다.
+    // 그걸 읽음으로 치면 상대에게 거짓 읽음 영수증이 나간다.
+    render(base());
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(1));
+
+    act(() => scrollAwayFromBottom());
+    act(() => {
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'live-offscreen',
+        body: '화면 밖 메시지',
+        authorWsId: 'pg-1',
+        rfpId: null,
+        createdAt: '2026-05-27T06:03:00.000Z',
+      });
+    });
+
+    // 도착 자체는 렌더된다(위에 pill 이 뜬다) — 읽음만 미룬다.
+    expect(await screen.findByText('화면 밖 메시지')).toBeInTheDocument();
+    expect(markConversationReadAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('아래로 다시 내려와 최신 메시지가 보이면 그때 읽음 처리한다', async () => {
+    render(base());
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(1));
+
+    act(() => scrollAwayFromBottom());
+    act(() => {
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'live-catchup',
+        body: '나중에 볼 메시지',
+        authorWsId: 'pg-1',
+        rfpId: null,
+        createdAt: '2026-05-27T06:04:00.000Z',
+      });
+    });
+    expect(markConversationReadAction).toHaveBeenCalledTimes(1);
+
+    act(() => scrollBackToBottom());
+
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(2));
+    expect(markConversationReadAction).toHaveBeenLastCalledWith({ conversationId: 'conv-1' });
+  });
+
+  it('탭이 숨겨져 있으면 도착한 메시지로 읽음 처리하지 않는다(거짓 읽음 영수증 방지)', async () => {
+    render(base());
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(1));
+
+    const original = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState');
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'hidden',
+    });
+    try {
+      act(() => {
+        channelOptions.onMessage?.({
+          type: 'message',
+          id: 'live-read-2',
+          body: '숨은 탭 메시지',
+          authorWsId: 'pg-1',
+          rfpId: null,
+          createdAt: '2026-05-27T06:01:00.000Z',
+        });
+      });
+      // 도착 자체는 렌더된다 — 읽음만 미룬다.
+      expect(await screen.findByText('숨은 탭 메시지')).toBeInTheDocument();
+      expect(markConversationReadAction).toHaveBeenCalledTimes(1);
+    } finally {
+      if (original) Object.defineProperty(document, 'visibilityState', original);
+      else
+        Object.defineProperty(document, 'visibilityState', {
+          configurable: true,
+          get: () => 'visible',
+        });
+    }
+  });
+
+  it('내가 보낸 메시지 echo 로는 읽음 처리하지 않는다', async () => {
+    render(base());
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'live-self-1',
+        body: '내 메시지 echo',
+        authorWsId: 'buyer-1', // 내 워크스페이스 → 'self'
+        rfpId: null,
+        createdAt: '2026-05-27T06:02:00.000Z',
+      });
+    });
+
+    expect(await screen.findByText('내 메시지 echo')).toBeInTheDocument();
+    expect(markConversationReadAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('읽음 처리와 함께 그 대화의 알림 배지를 로컬에서도 내린다', async () => {
+    render(base());
+
+    await waitFor(() =>
+      expect(markThreadReadLocal).toHaveBeenCalledWith('/messages?c=conv-1'),
+    );
+  });
+
+  it('열려 있는 동안 그 대화를 열린 스레드로 등록한다(토스트 억제 근거)', () => {
+    const { unmount } = render(base());
+    expect(isThreadOpen('/messages?c=conv-1')).toBe(true);
+
+    unmount();
+    expect(isThreadOpen('/messages?c=conv-1')).toBe(false);
   });
 
   it('상대 읽음 영수증 projection을 Conversation read-state hook에 위임한다', () => {

@@ -19,6 +19,8 @@ export function mutationErrorMessage(error: string): string {
       return '초대를 찾지 못했어요.';
     case 'WORKSPACE_NOT_FOUND':
       return '워크스페이스를 찾지 못했어요.';
+    case 'WORKSPACE_CHANGED':
+      return '다른 워크스페이스로 전환됐어요. 새로고침 후 다시 시도해 주세요.';
     default:
       return `처리하지 못했어요 (${error})`;
   }

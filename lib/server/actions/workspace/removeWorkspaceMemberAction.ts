@@ -7,10 +7,11 @@ import type { ActionResult } from '@/lib/server/actions/_result';
 export type RemoveWorkspaceMemberResult = ActionResult;
 
 /**
- * Admin-only: remove (kick) a member from the current workspace.
- * Authorization is checked against the caller's CURRENT DB role, not the JWT.
+ * Approved workspace admins and configured operators can remove a member.
+ * Authorization uses the caller's live DB membership or DB email plus the server allowlist.
  */
 export async function removeWorkspaceMemberAction(input: {
+  workspaceId: string;
   userId: string;
 }): Promise<RemoveWorkspaceMemberResult> {
   let session;
@@ -22,6 +23,7 @@ export async function removeWorkspaceMemberAction(input: {
 
   const workspaceId = session.user.workspaceId;
   if (!workspaceId) return { ok: false, error: 'FORBIDDEN_NOT_ADMIN' };
+  if (input.workspaceId !== workspaceId) return { ok: false, error: 'WORKSPACE_CHANGED' };
 
   const actor = { userId: session.user.id, workspaceId };
   const service = await getWorkspaceService();

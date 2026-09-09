@@ -17,6 +17,7 @@
 import { Suspense, useState } from 'react';
 import Link from 'next/link';
 
+import { conversationThreadLink, teamThreadLink } from '@/lib/chat/thread-link';
 import { Tabs } from '@/components/primitives/Tabs';
 import { IconButton } from '@/components/primitives/IconButton';
 import { EmptyState } from '@/components/primitives/EmptyState';
@@ -137,7 +138,7 @@ export function ChatPanel({
               </div>
               <div className="flex shrink-0 justify-end border-t border-[var(--md-sys-color-outline-variant)] px-3 py-1.5">
                 <Link
-                  href={`/messages?c=${conversationId}`}
+                  href={conversationThreadLink(conversationId)}
                   className="inline-flex items-center gap-0.5 text-[12px] text-[var(--md-sys-color-on-surface-variant)] transition-colors hover:text-[var(--md-sys-color-on-surface)]"
                 >
                   메시지함에서 열기
@@ -153,7 +154,7 @@ export function ChatPanel({
             </div>
             <div className="flex shrink-0 justify-end border-t border-[var(--md-sys-color-outline-variant)] px-3 py-1.5">
               <Link
-                href={`/messages?t=${rfpId}`}
+                href={teamThreadLink(rfpId)}
                 className="inline-flex items-center gap-0.5 text-[12px] text-[var(--md-sys-color-on-surface-variant)] transition-colors hover:text-[var(--md-sys-color-on-surface)]"
               >
                 메시지함에서 열기

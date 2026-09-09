@@ -59,13 +59,19 @@ export class DrizzleAuditLogRepository implements AuditLogRepo {
       .limit(opts.limit);
 
     return rows.map((r) => {
-      // actorEmail은 viaMaster 유도에만 쓰고 결과에서 제외한다 (운영자 이메일 비노출).
+      // 신규 행은 사건 당시 권한 출처를 metadata에 스냅샷으로 남긴다. 레거시 행만
+      // 현재 이메일 allowlist로 폴백하며, actorEmail 자체는 결과에서 제외한다.
       const { actorEmail, ...rest } = r;
+      const actorWasMaster =
+        r.metadata && typeof r.metadata === 'object' && !Array.isArray(r.metadata)
+          ? (r.metadata as Record<string, unknown>).actorWasMaster
+          : undefined;
       return {
         ...rest,
         metadata: r.metadata ?? null,
         createdAt: (r.createdAt as Date).toISOString(),
-        viaMaster: isMasterEmail(actorEmail),
+        viaMaster:
+          typeof actorWasMaster === 'boolean' ? actorWasMaster : isMasterEmail(actorEmail),
       };
     }) as AuditLogRecord[];
   }

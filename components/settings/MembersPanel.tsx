@@ -25,6 +25,7 @@ type ConfirmState =
 type InviteResult = { ok: true } | { ok: false; error: string };
 
 type Props = {
+  workspaceId: string;
   workspaceName: string;
   initialMembers: User[];
   userRole: Role;
@@ -34,6 +35,7 @@ type Props = {
 };
 
 export function MembersPanel({
+  workspaceId,
   workspaceName,
   initialMembers,
   userRole,
@@ -53,7 +55,7 @@ export function MembersPanel({
     ({ email, role }: { email: string; role: Role }) =>
       new Promise<InviteResult>((resolve) => {
         startTransition(async () => {
-          const result = await inviteWorkspaceMemberAction({ email, role });
+          const result = await inviteWorkspaceMemberAction({ workspaceId, email, role });
           if (!result.ok) {
             resolve({ ok: false, error: result.error });
             return;
@@ -65,13 +67,13 @@ export function MembersPanel({
           resolve({ ok: true });
         });
       }),
-    [],
+    [workspaceId],
   );
 
   // ── member mutations ─────────────────────────────────────────────────────
   const handleRemove = useCallback((m: User) => {
     startMutate(async () => {
-      const result = await removeWorkspaceMemberAction({ userId: m.id });
+      const result = await removeWorkspaceMemberAction({ workspaceId, userId: m.id });
       if (!result.ok) {
         toast(mutationErrorMessage(result.error), { type: 'error' });
         return;
@@ -80,12 +82,12 @@ export function MembersPanel({
       setConfirm(null);
       toast(`${m.name}님을 내보냈어요.`);
     });
-  }, []);
+  }, [workspaceId]);
 
   const handleRoleChange = useCallback((m: User, role: Role) => {
     if (role === m.role) return;
     startMutate(async () => {
-      const result = await changeWorkspaceMemberRoleAction({ userId: m.id, role });
+      const result = await changeWorkspaceMemberRoleAction({ workspaceId, userId: m.id, role });
       if (!result.ok) {
         toast(mutationErrorMessage(result.error), { type: 'error' });
         return;
@@ -93,12 +95,12 @@ export function MembersPanel({
       setMembers((prev) => prev.map((x) => (x.id === m.id ? { ...x, role } : x)));
       toast(`${m.name}님의 권한을 ${josa(roleLabel[role], '으로/로')} 변경했어요.`);
     });
-  }, []);
+  }, [workspaceId]);
 
   // ── pending invite mutations ──────────────────────────────────────────────
   const handleCancelInvite = useCallback((email: string) => {
     startMutate(async () => {
-      const result = await cancelWorkspaceInviteAction({ email });
+      const result = await cancelWorkspaceInviteAction({ workspaceId, email });
       if (!result.ok) {
         toast(mutationErrorMessage(result.error), { type: 'error' });
         return;
@@ -107,18 +109,18 @@ export function MembersPanel({
       setConfirm(null);
       toast('초대를 취소했어요.');
     });
-  }, []);
+  }, [workspaceId]);
 
   const handleResend = useCallback((email: string) => {
     startMutate(async () => {
-      const result = await resendWorkspaceInviteAction({ email });
+      const result = await resendWorkspaceInviteAction({ workspaceId, email });
       if (!result.ok) {
         toast(mutationErrorMessage(result.error), { type: 'error' });
         return;
       }
       toast('초대 메일을 다시 보냈어요.');
     });
-  }, []);
+  }, [workspaceId]);
 
   // ── row callbacks (stable refs so memoized rows skip re-render) ────────────
   const handleRemoveClick = useCallback((m: User) => {
