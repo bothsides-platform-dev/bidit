@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.0.1] - 2026-09-09
+
+### Changed
+
+- **홈의 메시지 안 읽음 수를 바로 이해할 수 있어요**: 숫자만 보이던 배지가 `안 읽음 N건`으로 표시돼, 새로 확인할 대화가 몇 개인지 바로 알 수 있어요.
+
 ## [0.11.0.0] - 2026-09-09
 
 ### Changed
