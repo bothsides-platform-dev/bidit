@@ -6,6 +6,7 @@ import { render, screen, cleanup } from '@testing-library/react';
 import type { ConversationListItem } from '@/components/messages/types';
 import type { InboxListItem } from '@/lib/server/actions/chat/inboxLoader';
 import type { PresenceState } from '@/components/presence/WorkspacePresenceProvider';
+import { unreadCountLabel } from '@/lib/types/notification';
 
 // next/link renders as <a> in jsdom
 vi.mock('next/link', () => ({
@@ -105,12 +106,12 @@ describe('RecentMessagesPanel', () => {
 
   it('shows an unread badge when unreadCount > 0', () => {
     render(<RecentMessagesPanel items={[makeConv()]} unreadCount={3} />);
-    expect(screen.getByLabelText('읽지 않은 메시지 3개')).toBeInTheDocument();
+    expect(screen.getByText(unreadCountLabel(3))).toBeInTheDocument();
   });
 
   it('does not show an unread badge when unreadCount is 0', () => {
     render(<RecentMessagesPanel items={[makeConv()]} unreadCount={0} />);
-    expect(screen.queryByLabelText(/읽지 않은 메시지/)).not.toBeInTheDocument();
+    expect(screen.queryByText(unreadCountLabel(0))).not.toBeInTheDocument();
   });
 
   it('renders the empty state when items is empty', () => {
