@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.1.3] - 2026-09-10
+
+### Changed
+
+- **메시지에서 관련 견적 요청을 더 쉽게 알아봐요**: 오른쪽 패널을 `대화 정보`, 관련 요청 영역을 `견적 요청`으로 표시해 내부 용어 없이 대화와 연결된 정보를 확인할 수 있어요.
+
 ## [0.11.1.2] - 2026-09-10
 
 ### Fixed
