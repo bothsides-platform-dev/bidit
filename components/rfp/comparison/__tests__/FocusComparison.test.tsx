@@ -197,6 +197,55 @@ describe('FocusComparison', () => {
     expect(screen.queryByText(/PG사를 추가하면/)).not.toBeInTheDocument();
   });
 
+  it('발송 대기 PG만 있으면 요청 완료가 아니라 초대 발송이 필요하다고 안내한다', () => {
+    render(
+      <FocusComparison
+        {...baseProps}
+        bids={[]}
+        invitedPgCount={0}
+        draftPgCount={2}
+        onManageInvitations={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.tagName === 'P' &&
+          element.textContent === 'PG사 2곳을 추가했어요. 초대를 보내면 견적을 받을 수 있어요.',
+      ),
+    ).toHaveTextContent(
+      'PG사 2곳을 추가했어요. 초대를 보내면 견적을 받을 수 있어요.',
+    );
+    expect(
+      screen.getByText(
+        (_, element) => element?.tagName === 'SPAN' && element.textContent === '발송 대기 2곳',
+      ),
+    ).toHaveTextContent('발송 대기 2곳');
+    expect(screen.queryByText(/요청했어요/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '초대 현황 보기' })).toBeInTheDocument();
+  });
+
+  it('마감이 지난 빈 견적 화면은 마감 상태를 한 번만 표시한다', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-09T03:00:00+09:00'));
+
+    try {
+      render(
+        <FocusComparison
+          {...baseProps}
+          bids={[]}
+          deadline="2026-09-08T23:59:59+09:00"
+          onManageInvitations={vi.fn()}
+        />,
+      );
+
+      expect(screen.getAllByText('마감', { selector: 'span' })).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('구간 셀렉터를 바꾸면 카드 요율 표시가 그 구간 값으로 바뀐다', () => {
     const bids = [
       makeBid({ id: 'a', pgWsId: 'pgA', paymentFees: { card: { sole: 0.005, general: 0.018 } } }),

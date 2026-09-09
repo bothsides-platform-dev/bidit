@@ -76,6 +76,8 @@ export function BuyerDealRoomBody({ data }: { data: BuyerRfpDetailData }) {
   const pgName = (wsId?: string) => (wsId ? (pgWsById[wsId]?.name ?? wsId) : '');
   const canAward = rfp.status === 'sent';
   const isOpenStatus = rfp.status === 'sent';
+  const invitedPgCount = inviteList.filter(({ status }) => status !== 'draft').length;
+  const draftPgCount = inviteList.length - invitedPgCount;
 
   const contractTab = buildContractTabEntries({
     rfpCode: rfp.code,
@@ -124,7 +126,8 @@ export function BuyerDealRoomBody({ data }: { data: BuyerRfpDetailData }) {
             rfpCode={rfp.code}
             requoteByPg={requoteByPg}
             buyerGrade={rfp.bizProfile?.grade}
-            invitedPgCount={inviteList.length}
+            invitedPgCount={invitedPgCount}
+            draftPgCount={draftPgCount}
             deadline={rfp.deadline}
             canEditInvitations={canEdit}
             onManageInvitations={() => setTab('manage')}

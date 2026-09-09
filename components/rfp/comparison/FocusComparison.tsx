@@ -59,6 +59,8 @@ type Props = {
   hideHeader?: boolean;
   /** 견적이 아직 없을 때 구매사에게 보여줄 초대 현황. */
   invitedPgCount?: number;
+  /** PG 관리에 추가했지만 아직 초대 메일을 보내지 않은 PG 수. */
+  draftPgCount?: number;
   /** 견적이 아직 없을 때 보여줄 요청 마감. */
   deadline?: string;
   /** PG 초대를 추가할 권한이 있는지. 읽기 전용 화면에서 실행 불가능한 약속을 피한다. */
@@ -143,7 +145,10 @@ export function FocusComparison(props: Props) {
   if (sortedBids.length === 0 || !active) {
     const invitedPgCount = props.invitedPgCount ?? 0;
     const hasInvitations = invitedPgCount > 0;
+    const draftPgCount = props.draftPgCount ?? 0;
+    const hasDrafts = draftPgCount > 0;
     const canEditInvitations = props.canEditInvitations ?? true;
+    const deadlineLabel = props.deadline ? formatDeadline(props.deadline) : null;
     return (
       <EmptyState
         icon={<Inbox aria-hidden />}
@@ -154,6 +159,18 @@ export function FocusComparison(props: Props) {
               PG사 <span className="md-numeric">{invitedPgCount}</span>곳에 요청했어요. 견적이
               도착하면 알림으로 알려드릴게요.
             </>
+          ) : hasDrafts ? (
+            canEditInvitations ? (
+              <>
+                PG사 <span className="md-numeric">{draftPgCount}</span>곳을 추가했어요. 초대를
+                보내면 견적을 받을 수 있어요.
+              </>
+            ) : (
+              <>
+                PG사 <span className="md-numeric">{draftPgCount}</span>곳이 초대 발송을 기다리고
+                있어요. PG 관리에서 현재 상태를 확인할 수 있어요.
+              </>
+            )
           ) : canEditInvitations ? (
             '아직 초대한 PG사가 없어요. PG사를 추가하면 견적을 받을 수 있어요.'
           ) : (
@@ -162,24 +179,33 @@ export function FocusComparison(props: Props) {
         }
         action={
           <div className="flex flex-col items-center gap-4">
-            {(hasInvitations || props.deadline) && (
+            {(hasInvitations || hasDrafts || deadlineLabel) && (
               <div className="flex flex-wrap items-center justify-center gap-2 text-[length:var(--md-typescale-label-medium-size)] text-[var(--md-sys-color-on-surface-variant)]">
                 {hasInvitations && (
                   <span>
                     초대 <span className="md-numeric">{invitedPgCount}</span>곳
                   </span>
                 )}
-                {hasInvitations && props.deadline && <span aria-hidden>·</span>}
-                {props.deadline && (
+                {hasInvitations && hasDrafts && <span aria-hidden>·</span>}
+                {hasDrafts && (
                   <span>
-                    마감 <span className="md-numeric">{formatDeadline(props.deadline)}</span>
+                    발송 대기 <span className="md-numeric">{draftPgCount}</span>곳
                   </span>
                 )}
+                {(hasInvitations || hasDrafts) && deadlineLabel && <span aria-hidden>·</span>}
+                {deadlineLabel &&
+                  (deadlineLabel === '마감' ? (
+                    <span>마감</span>
+                  ) : (
+                    <span>
+                      마감 <span className="md-numeric">{deadlineLabel}</span>
+                    </span>
+                  ))}
               </div>
             )}
             {props.onManageInvitations && (
               <Button type="button" onClick={props.onManageInvitations}>
-                {hasInvitations
+                {hasInvitations || hasDrafts
                   ? '초대 현황 보기'
                   : canEditInvitations
                     ? 'PG사 추가하기'
