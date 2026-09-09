@@ -111,12 +111,18 @@ v0.4.34.0 이 `saveQuoteTemplateAction` 에 `settleLimit > 0` 을 걸었지만 �
 
 닫는 법: `bizProfileMode:'override'` 를 `resolveBizProfileForWrite` 로 태우고(설정 경로와 동일), 건별 오버라이드에도 admin 게이트가 필요한지 제품 판단. 의도적으로 열어 두기로 한다면 THREAT_MODEL.md 에 수용 리스크로 명문화해야 한다 — 지금은 두 경로의 비대칭이 어디에도 기록돼 있지 않다. (발견: /ship security 전문가 리뷰 2026-07-29, v0.4.34.0)
 
-### 마스터 면제가 게이트마다 다르고 어디에도 정책이 적혀 있지 않다 (P3)
+### ~~마스터 면제가 게이트마다 다르고 어디에도 정책이 적혀 있지 않다 (P3)~~ — 해결 (v0.10.0.0)
+운영계정이 선택한 모든 워크스페이스에서 이름 변경 요청·멤버 초대/재발송/취소·역할 변경·내보내기와 활동 기록 조회를 할 수 있도록 정책을 확정했다. 멤버 관리 쓰기 경계는 `WorkspaceService.workspaceManagementAccess`에 모았고, 세션 플래그 대신 DB의 현재 이메일을 `MASTER_ACCOUNT_EMAILS` allowlist와 다시 대조한다. 액션은 화면의 `workspaceId`와 현재 세션 대상을 비교해 오래 열린 탭이 다른 워크스페이스를 바꾸지 못하게 한다. 운영계정도 마지막 승인 admin을 없앨 수 없으며, 운영 권한은 감사 로그에 사건 당시 값으로 남는다. 기술 규범은 CLAUDE.md, 화면 계약은 SCREEN_DESIGN.md, 신뢰 경계 포인터는 `docs/THREAT_MODEL.md`에 기록했다.
+
+<details><summary>원문</summary>
+
 `isApprovedAdmin` 은 10곳 넘게 불리는데 **마스터가 그것을 우회하는지가 곳마다 다르다.** 면제 있음: 로고 라우트(`guardWrite`)·`updateWorkspaceBizProfileAction`·`requestWorkspaceNameChangeAction`·설정 페이지의 `canEditWorkspace`. 면제 없음: `listAuditLogsAction`·`settings/audit-log/page.tsx`·`lib/server/services/workspace.ts` 의 초대·제거·역할변경 등 다섯 게이트.
 
 결과적으로 **마스터는 로고·사업자번호를 바꾸고 워크스페이스 이름 변경을 요청할 수 있지만, 멤버를 초대·제거하거나 역할을 바꾸거나 감사 로그를 볼 수 없다.** 그게 의도인지 사고인지 코드 어디에도 적혀 있지 않다 — 지금은 각 호출부의 유무로만 표현된다.
 
 닫는 법: `lib/auth/pg-membership-gate.ts` 선례(하나의 술어 + 두 호출부로도 독립 모듈을 만들고 모듈 헤더에 마스터 면제 근거를 적었다)를 따라 `requireApprovedWorkspaceAdmin(userId, workspaceId, email)` 를 `lib/auth/` 에 뽑고, **같은 변경에서 현재 면제 없는 일곱 게이트의 마스터 정책을 결정한다**(가드 테스트로 고정). 이건 authz 행동 변경이라 P2 로고 픽스 안에 넣을 수 없어 분리했다. 이 항목은 아래 P4(에러 코드 이름)를 포함한다 — 한 헬퍼로 모으면 코드 이름도 자연히 하나가 된다. (발견: /ship maintainability 리뷰 2026-07-30, v0.4.35.0)
+
+</details>
 
 ### 워크스페이스 정체성 쓰기 경로가 워크스페이스 status 를 보지 않는다 (P3, 선존재)
 로고 라우트·`updateWorkspaceBizProfileAction` 두 경로는 **멤버 승인 상태만** 보고 워크스페이스 자체의 `status`(pending/suspended)는 보지 않는다. 이름 변경 요청은 v0.6.1.0 에서 트랜잭션 안의 active 조회를 거치도록 고쳐 이 항목에서 빠졌다. 남은 두 경로 때문에 **정지된 워크스페이스의 승인 admin 도 로고를 올리고 지울 수 있다.** 로고 GET 은 비인증 공개 + `Cache-Control: public, max-age=31536000, immutable` 이라, 앱 origin 의 안정적 URL 로 임의 PNG/JPEG 를 계속 서빙할 수 있다(sniff 검증이 SVG/XSS 는 막는다). 셸 가드(`resolveShellAccess`)는 RSC 렌더만 막고 이 라우트는 지나지 않는다.
@@ -203,10 +209,10 @@ v0.4.34.0 이 `app/(app)/settings/profile/page.tsx` 의 `canEditWorkspace` 를 r
 
 액션 레벨 게이트는 세 곳 모두 양쪽 축이 커버돼 있으므로(실제 권한 상승은 서버에서 막힌다) 이건 **어포던스 회귀** 위험이다 — 미승인 admin 이 버튼을 보고 눌렀다가 거부당하는 막다른 길. 닫는 법: 저 스펙에 `approval_status` 토글을 추가한다. (발견: /ship testing·coverage 리뷰 2026-07-30, v0.4.35.0 — Playwright 검증에 시드된 :5433 DB + 서버가 필요해 이번 컷에서는 미작성)
 
-### admin-or-master 게이트가 네 곳에 손으로 복제됐다 (P3)
-`isMasterEmail` 면제 + `getMembership`→`isApprovedAdmin` 조합이 네 곳에 같은 모양으로 적혀 있다: `app/api/workspace/[id]/avatar/route.ts` 의 `guardWrite`, `updateWorkspaceBizProfileAction`, `requestWorkspaceNameChangeAction`, 그리고 `settings/profile/page.tsx` 의 `canEditWorkspace`. 넷이 갈리면 권한 판정이 표면별로 달라진다 — 실제로 v0.4.34.0 이 옛 `renameWorkspaceAction` 의 마스터 면제를 빼먹어 v0.4.35.0 에서 따라잡았고, 그게 이 중복이 만드는 결함 모양이다.
+### admin-or-master 게이트가 여러 표면에 손으로 복제됐다 (P3)
+v0.10.0.0에서 멤버 관리 쓰기들은 `WorkspaceService.workspaceManagementAccess` 한 곳으로 모였고 이름 변경 요청도 이 경계를 지난다. 그러나 `isMasterEmail` 면제 + `getMembership`→`isApprovedAdmin` 조합은 여전히 프로필 페이지의 `canEditWorkspace`, 로고 라우트 `guardWrite`, `updateWorkspaceBizProfileAction`, 활동 기록 페이지·액션에 각각 남아 있다. 이들이 갈리면 운영계정이 화면은 열지만 다음 페이지를 못 읽거나, UI는 막는데 서버는 허용하는 식으로 표면별 권한이 달라진다.
 
-닫는 법: `lib/auth/active-workspace.ts` 에 `isApprovedAdminOrMaster(userId, workspaceId, email)` 를 두고 네 호출처가 그것만 부른다. 권한 경계 네 곳을 동시에 건드리는 리팩터라 릴리스 컷에 섞지 않았다. (발견: /ship maintainability 리뷰 2026-07-30, v0.4.35.0)
+닫는 법: `lib/auth/active-workspace.ts` 에 `isApprovedAdminOrMaster(userId, workspaceId, email)` 를 두고 남은 호출처가 그것만 부른다. 서비스 내부의 DB 이메일 재조회 규칙까지 같은 헬퍼가 안전하게 표현할 수 있는지 먼저 정하고, 아니라면 UI/읽기 게이트용 헬퍼와 쓰기 서비스 경계를 명시적으로 나눈다. (발견: /ship maintainability 리뷰 2026-07-30, v0.4.35.0; 범위 갱신 v0.10.0.0)
 
 ### 설정 패널의 `ERROR_LABELS` 맵이 폼마다 따로 있다 (P4)
 `WorkspaceLogoForm`·`WorkspaceBizNoForm`·`WorkspaceNameForm` 이 각자 `ERROR_LABELS` 를 들고 있고, `FORBIDDEN_NOT_ADMIN` 문구는 앞의 두 파일에 바이트 단위로 같은 문자열이 복제돼 있다. 조회 **판정**은 v0.4.35.0 에서 `lib/utils/error-label.ts` 단일 출처로 모았지만 **문구 맵** 자체는 아직 셋이다. `lib/quote/error-messages.ts` 가 이미 쓰는 모양(코드→한국어 단일 맵)을 설정 패널에도 적용하면 된다. (발견: /ship maintainability 리뷰 2026-07-30, v0.4.35.0)
