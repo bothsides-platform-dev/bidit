@@ -1,11 +1,11 @@
 'use client';
 
 /**
- * BuyerDealRoomBody — 구매사 딜룸 본문(좌측 액션 레일 + 가운데 탭).
+ * BuyerDealRoomBody — 구매사 딜룸 본문(좌측 작업 레일 + 가운데 탭).
  *
  * 탭: 견적비교(FocusComparison) · 요청조건(RequestConditionsView) · 첨부 · PG관리.
- * 레일: 선정·재요청(포커스 PG 대상 다이얼로그) · PG관리·요청조건·첨부(탭 전환) ·
- *       마감·취소(ConfirmDialog → close/cancel 액션).
+ * 레일: 선정·재요청(포커스 PG 대상 다이얼로그) · 마감·취소
+ *       (ConfirmDialog → close/cancel 액션). 콘텐츠 이동은 상단 탭만 소유한다.
  *
  * 선정/재요청 대상은 DealRoom 컨텍스트의 포커스 PG(=FocusComparison 이 set)를
  * 따른다 — 가운데 견적비교 탭에서 PG 를 바꾸면 레일 '선정'도 그 PG 를 겨냥한다.
@@ -15,9 +15,6 @@ import { useRouter } from 'next/navigation';
 import {
   Check,
   RefreshCw,
-  UserPlus,
-  FileText,
-  Paperclip,
   Lock,
   XCircle,
 } from 'lucide-react';
@@ -127,6 +124,10 @@ export function BuyerDealRoomBody({ data }: { data: BuyerRfpDetailData }) {
             rfpCode={rfp.code}
             requoteByPg={requoteByPg}
             buyerGrade={rfp.bizProfile?.grade}
+            invitedPgCount={inviteList.length}
+            deadline={rfp.deadline}
+            canEditInvitations={canEdit}
+            onManageInvitations={() => setTab('manage')}
             hideHeader
           />
         </>
@@ -154,28 +155,30 @@ export function BuyerDealRoomBody({ data }: { data: BuyerRfpDetailData }) {
 
   const actions: RailAction[] = [
     ...contractTab.actions,
-    {
-      id: 'award',
-      label: '선정',
-      icon: <Check />,
-      primary: true,
-      disabled: !canAward || !focusedBid,
-      onSelect: () => setAwardOpen(true),
-    },
-    {
-      id: 'requote',
-      label: '재요청',
-      icon: <RefreshCw />,
-      disabled: !canAward || bids.length === 0,
-      onSelect: () => setRequoteOpen(true),
-    },
-    { id: 'manage', label: 'PG 관리', icon: <UserPlus />, onSelect: () => setTab('manage') },
-    { id: 'request', label: '요청 조건', icon: <FileText />, onSelect: () => setTab('request') },
-    { id: 'attach', label: '첨부', icon: <Paperclip />, onSelect: () => setTab('attach') },
+    ...(bids.length > 0
+      ? [
+          {
+            id: 'award',
+            label: '선정',
+            icon: <Check />,
+            primary: true,
+            disabled: !canAward || !focusedBid,
+            onSelect: () => setAwardOpen(true),
+          },
+          {
+            id: 'requote',
+            label: '재요청',
+            icon: <RefreshCw />,
+            disabled: !canAward,
+            onSelect: () => setRequoteOpen(true),
+          },
+        ] satisfies RailAction[]
+      : []),
     {
       id: 'close',
       label: '마감',
       icon: <Lock />,
+      placement: 'bottom',
       disabled: !isOpenStatus,
       onSelect: () => setCloseOpen(true),
     },
@@ -184,6 +187,7 @@ export function BuyerDealRoomBody({ data }: { data: BuyerRfpDetailData }) {
       label: '취소',
       icon: <XCircle />,
       danger: true,
+      placement: 'bottom',
       disabled: !isOpenStatus,
       onSelect: () => setCancelOpen(true),
     },

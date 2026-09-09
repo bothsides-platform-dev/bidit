@@ -10,6 +10,8 @@
 //   · PgMemoPdfPanel(메모/PDF) · AwardCtaBar(CTA). 순수 파생은 focus-comparison-model.ts.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Inbox } from 'lucide-react';
+import { Button } from '@/components/primitives/Button';
 import { Chip } from '@/components/primitives/Chip';
 import { EmptyState } from '@/components/primitives/EmptyState';
 import { Accordion, AccordionItem } from '@/components/ui/accordion';
@@ -28,6 +30,7 @@ import { useFlashOnChange } from './useFlashOnChange';
 import { CounterpartyProfileCard } from '@/components/messages/CounterpartyProfileCard';
 import { useDealRoom } from '@/components/deal-room/DealRoomContext';
 import { Divider } from '@/components/primitives/Divider';
+import { formatDeadline } from '@/lib/utils/format';
 import type { WorkspaceDisplay } from '@/lib/types/workspace';
 import {
   type Bid,
@@ -54,6 +57,14 @@ type Props = {
   buyerGrade?: MerchantTier;
   /** 딜룸 모달의 '견적 비교' 탭에 임베드될 때 — 탭이 제목을 제공하므로 외곽 헤더를 숨긴다. */
   hideHeader?: boolean;
+  /** 견적이 아직 없을 때 구매사에게 보여줄 초대 현황. */
+  invitedPgCount?: number;
+  /** 견적이 아직 없을 때 보여줄 요청 마감. */
+  deadline?: string;
+  /** PG 초대를 추가할 권한이 있는지. 읽기 전용 화면에서 실행 불가능한 약속을 피한다. */
+  canEditInvitations?: boolean;
+  /** 빈 상태의 단일 CTA — 구매사 딜룸의 PG 관리 탭으로 이동한다. */
+  onManageInvitations?: () => void;
   /**
    * 가상 샘플 온보딩 전용(opt-in) — 주어지면 클릭 시 실제 awardRfpAction(AwardConfirmDialog)
    * 대신 이 콜백을 호출한다(가짜 선정).
@@ -130,10 +141,53 @@ export function FocusComparison(props: Props) {
   );
 
   if (sortedBids.length === 0 || !active) {
+    const invitedPgCount = props.invitedPgCount ?? 0;
+    const hasInvitations = invitedPgCount > 0;
+    const canEditInvitations = props.canEditInvitations ?? true;
     return (
       <EmptyState
-        title="견적을 기다리고 있어요"
-        description="초대한 PG가 견적을 보내면 여기에서 비교하고 선정할 수 있어요."
+        icon={<Inbox aria-hidden />}
+        title="아직 도착한 견적이 없어요"
+        description={
+          hasInvitations ? (
+            <>
+              PG사 <span className="md-numeric">{invitedPgCount}</span>곳에 요청했어요. 견적이
+              도착하면 알림으로 알려드릴게요.
+            </>
+          ) : canEditInvitations ? (
+            '아직 초대한 PG사가 없어요. PG사를 추가하면 견적을 받을 수 있어요.'
+          ) : (
+            '초대한 PG사가 없어요. PG 관리에서 현재 상태를 확인할 수 있어요.'
+          )
+        }
+        action={
+          <div className="flex flex-col items-center gap-4">
+            {(hasInvitations || props.deadline) && (
+              <div className="flex flex-wrap items-center justify-center gap-2 text-[length:var(--md-typescale-label-medium-size)] text-[var(--md-sys-color-on-surface-variant)]">
+                {hasInvitations && (
+                  <span>
+                    초대 <span className="md-numeric">{invitedPgCount}</span>곳
+                  </span>
+                )}
+                {hasInvitations && props.deadline && <span aria-hidden>·</span>}
+                {props.deadline && (
+                  <span>
+                    마감 <span className="md-numeric">{formatDeadline(props.deadline)}</span>
+                  </span>
+                )}
+              </div>
+            )}
+            {props.onManageInvitations && (
+              <Button type="button" onClick={props.onManageInvitations}>
+                {hasInvitations
+                  ? '초대 현황 보기'
+                  : canEditInvitations
+                    ? 'PG사 추가하기'
+                    : 'PG 관리 보기'}
+              </Button>
+            )}
+          </div>
+        }
       />
     );
   }

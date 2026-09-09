@@ -151,7 +151,50 @@ describe('FocusComparison', () => {
 
   it('shows an empty state when no bids have arrived', () => {
     render(<FocusComparison {...baseProps} bids={[]} />);
-    expect(screen.getByText(/견적을 기다리고 있어요/)).toBeInTheDocument();
+    expect(screen.getByText('아직 도착한 견적이 없어요')).toBeInTheDocument();
+  });
+
+  it('견적이 없으면 초대 현황과 마감을 보여주고 PG 관리로 이동할 수 있다', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-09T03:00:00+09:00'));
+    const onManageInvitations = vi.fn();
+
+    try {
+      render(
+        <FocusComparison
+          {...baseProps}
+          bids={[]}
+          invitedPgCount={3}
+          deadline="2026-09-14T23:59:59+09:00"
+          onManageInvitations={onManageInvitations}
+        />,
+      );
+
+      expect(screen.getByText('아직 도착한 견적이 없어요')).toBeInTheDocument();
+      expect(screen.getByText(/PG사/, { selector: 'p' })).toHaveTextContent(
+        'PG사 3곳에 요청했어요',
+      );
+      expect(screen.getByText('D-5')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '초대 현황 보기' }));
+      expect(onManageInvitations).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('편집할 수 없고 초대도 없으면 PG사를 추가할 수 있다고 안내하지 않는다', () => {
+    render(
+      <FocusComparison
+        {...baseProps}
+        bids={[]}
+        invitedPgCount={0}
+        canEditInvitations={false}
+        onManageInvitations={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'PG 관리 보기' })).toBeInTheDocument();
+    expect(screen.queryByText(/PG사를 추가하면/)).not.toBeInTheDocument();
   });
 
   it('구간 셀렉터를 바꾸면 카드 요율 표시가 그 구간 값으로 바뀐다', () => {
