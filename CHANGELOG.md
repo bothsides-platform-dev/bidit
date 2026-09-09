@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.1.2] - 2026-09-10
+
+### Fixed
+
+- **목록 항목의 글자가 배경 가장자리에 붙지 않아요**: 홈 할 일 목록과 견적·계약서 템플릿 목록에 좌우 여백을 더해, 항목을 가리키거나 저장 상태가 표시될 때도 내용을 편하게 읽을 수 있어요.
+
 ## [0.11.1.0] - 2026-09-09
 
 ### Changed
