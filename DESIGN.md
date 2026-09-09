@@ -317,7 +317,7 @@ base-ui/Radix 래퍼(`components/ui/*`). 공통: 작은 반경(4–12px), 큰 �
 
 **Note** (`primitives/Note.tsx`): 목록·패널 **아래**에 붙는 한 줄 보조 안내 — 14px 아이콘(`[&_svg]:size-3.5`, 기본 `Info`, `icon` 으로 교체 가능) + body-small 문구, 둘 다 on-surface-variant, `flex items-start gap-2`. 아이콘은 `aria-hidden` 장식이라 의미는 문구가 전부 진다. **바깥 여백은 호출부가 소유한다**(프리미티브는 margin 을 갖지 않는다 — 호출부가 `className="mt-3"`). 저장 상한·스코프 안내처럼 "행동을 요구하지 않는 사실"에 쓴다(경고·에러는 아니다). 템플릿 두 화면(SCREEN_DESIGN P8·P9)이 소비.
 
-**Skeleton (로딩)** (`ui/skeleton.tsx`): `animate-pulse` + `rounded-md` + `surface-container-high` 바. 폭/높이는 className. 라우트 `loading.tsx`(messages/rfp/notifications)·홈·칸반·인박스·스레드가 소비. 모션 원칙은 §6.
+**Skeleton (로딩)** (`ui/skeleton.tsx`): `animate-pulse` + `rounded-md` + `surface-container-high` 바. 폭/높이는 className. 라우트 `loading.tsx`(messages/rfp/notifications)·홈·인박스·스레드가 소비. 모션 원칙은 §6.
 
 **Toast** (`shell/Toaster.tsx`, base-ui Toast): 뷰포트 **우하단**(`bottom-5 right-5`, z-50). 칩 `max-w min(92vw,24rem)`, `shape-extra-small`(4px), **`inverse-surface` 배경**(반전), `px-4 py-3`, `elevation-3`, 슬라이드 200ms. `success` = 좌측 `border-l-2` tertiary. 타이틀 body-medium(inverse-on-surface), 닫기 inverse-primary. `import { toast } from '@/lib/toast'`.
 

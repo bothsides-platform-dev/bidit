@@ -14,12 +14,9 @@ const DEADLINE_OPTIONS: Option[] = [
 export function BoardFilterBar({
   statusOptions,
   gradeOptions,
-  hideStatus = false,
 }: {
   statusOptions: Option[];
   gradeOptions: Option[];
-  /** 보드 뷰에서는 컬럼이 곧 status — 중복인 status 칩 그룹을 숨긴다. */
-  hideStatus?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -37,15 +34,13 @@ export function BoardFilterBar({
 
   return (
     <div className="flex items-center gap-3 flex-wrap" role="group" aria-label="필터">
-      {!hideStatus && (
-        <ChipGroup
-          param="status"
-          label="상태"
-          options={statusOptions}
-          current={current('status')}
-          onSelect={setParam}
-        />
-      )}
+      <ChipGroup
+        param="status"
+        label="상태"
+        options={statusOptions}
+        current={current('status')}
+        onSelect={setParam}
+      />
       <ChipGroup
         param="deadline"
         label="마감일"
@@ -94,7 +89,7 @@ function ChipGroup({
             aria-pressed={active}
             onClick={() => onSelect(param, active ? '' : o.value)}
             className={cn(
-              'h-7 px-2.5 rounded-[var(--md-sys-shape-small)] text-[13px] border transition-colors',
+              'h-7 cursor-pointer px-2.5 rounded-[var(--md-sys-shape-small)] border text-[13px] transition-colors duration-[var(--md-sys-motion-duration-short-4)]',
               'focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-[var(--md-sys-color-primary)]/50',
               active
                 ? 'border-[var(--md-sys-color-primary)] text-[var(--md-sys-color-primary)]'

@@ -185,6 +185,5 @@ app/                       ← action / server component만 허용
 | 테스트 DB | PGlite | 실제 PostgreSQL DDL을 인메모리로 → CI 속도 + 현실적 검증 |
 | Styling | Tailwind v4 + CSS Variables | 디자인 시스템 토큰 기반 일관성 유지 |
 | 상태 관리 | Zustand | UI 토글·시그업 초안·헤더 액션 슬롯 등 경량 전역 상태 |
-| DnD | @dnd-kit | 칸반 보드 드래그·정렬 (`fractional-indexing` 병용) |
 | 모니터링 | Sentry + Axiom (Pino) | 에러 트래킹 + 구조화 로그 |
 | 배포 | AWS Lightsail + Caddy + PM2 | 단일 VM 자체호스팅, Caddy가 TLS·리버스프록시·WSS 통합 처리 |
