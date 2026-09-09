@@ -549,6 +549,30 @@ describe('WorkspaceService.resendInvite', () => {
       process.env.MASTER_ACCOUNT_EMAILS = 'ops@support-b.com';
     });
   });
+
+  it('운영계정에 admin 멤버십이 있어도 감사 행은 운영자 권한으로 기록한다', async () => {
+    await withConfiguredMaster(async () => {
+      const master = await seedUser(db, { email: 'ops@support-b.com' });
+      const ws = await seedBuyerWorkspace(db);
+      await seedMembership(db, ws.id, master.id, 'admin');
+      await service.inviteMember(
+        { email: 'pending@test.com', role: 'member' },
+        { userId: master.id, workspaceId: ws.id },
+      );
+
+      const result = await service.resendInvite(
+        { email: 'pending@test.com' },
+        { userId: master.id, workspaceId: ws.id },
+      );
+
+      expect(result.ok).toBe(true);
+      const logs = await (await getAuditLogRepo()).listForWorkspace(ws.id, { limit: 50 });
+      expect(logs.find((row) => row.action === 'workspace.member_invite_resend')).toMatchObject({
+        actorUserId: master.id,
+        viaMaster: true,
+      });
+    });
+  });
 });
 
 // ─── cancelInvite ─────────────────────────────────────────────────────────────
@@ -738,7 +762,11 @@ describe('WorkspaceService — 감사 로그 기록', () => {
     const rows = await rowsFor('workspace.member_invite');
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ actorUserId: admin.id, actorWorkspaceId: ws.id });
-    expect(rows[0]!.metadata).toMatchObject({ email: 'newbie@audit.com', role: 'member' });
+    expect(rows[0]!.metadata).toMatchObject({
+      email: 'newbie@audit.com',
+      role: 'member',
+      actorWasMaster: false,
+    });
   });
 
   it('resendInvite 성공 시 workspace.member_invite_resend 감사 행을 남긴다', async () => {
@@ -759,7 +787,10 @@ describe('WorkspaceService — 감사 로그 기록', () => {
     const rows = await rowsFor('workspace.member_invite_resend');
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ actorUserId: admin.id, actorWorkspaceId: ws.id });
-    expect(rows[0]!.metadata).toMatchObject({ email: 'resend@audit.com' });
+    expect(rows[0]!.metadata).toMatchObject({
+      email: 'resend@audit.com',
+      actorWasMaster: false,
+    });
   });
 
   it('cancelInvite 성공 시 workspace.member_invite_cancel 감사 행을 남긴다', async () => {
@@ -780,7 +811,10 @@ describe('WorkspaceService — 감사 로그 기록', () => {
     const rows = await rowsFor('workspace.member_invite_cancel');
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ actorUserId: admin.id, actorWorkspaceId: ws.id });
-    expect(rows[0]!.metadata).toMatchObject({ email: 'cancel@audit.com' });
+    expect(rows[0]!.metadata).toMatchObject({
+      email: 'cancel@audit.com',
+      actorWasMaster: false,
+    });
   });
 
   it('acceptInvite 성공 시 workspace.invite_accept 감사 행을 남긴다', async () => {
@@ -828,7 +862,11 @@ describe('WorkspaceService — 감사 로그 기록', () => {
     const rows = await rowsFor('workspace.member_role_change');
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ actorUserId: admin.id, actorWorkspaceId: ws.id });
-    expect(rows[0]!.metadata).toMatchObject({ targetUserId: member.id, role: 'admin' });
+    expect(rows[0]!.metadata).toMatchObject({
+      targetUserId: member.id,
+      role: 'admin',
+      actorWasMaster: false,
+    });
   });
 
   it('removeMember 성공 시 workspace.member_remove 감사 행을 남긴다', async () => {
@@ -847,7 +885,10 @@ describe('WorkspaceService — 감사 로그 기록', () => {
     const rows = await rowsFor('workspace.member_remove');
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ actorUserId: admin.id, actorWorkspaceId: ws.id });
-    expect(rows[0]!.metadata).toMatchObject({ targetUserId: member.id });
+    expect(rows[0]!.metadata).toMatchObject({
+      targetUserId: member.id,
+      actorWasMaster: false,
+    });
   });
 });
 

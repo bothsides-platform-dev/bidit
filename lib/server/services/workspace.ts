@@ -42,15 +42,15 @@ export class WorkspaceService {
   private async workspaceManagementAccess(
     actor: WorkspaceActor,
   ): Promise<{ allowed: boolean; viaMaster: boolean }> {
-    const membership = await getMembership(actor.userId, actor.workspaceId);
-    if (isApprovedAdmin(membership)) return { allowed: true, viaMaster: false };
-
     // 운영계정은 어느 워크스페이스에도 멤버십 행을 만들지 않고 synthetic admin 으로
     // 진입한다. 세션의 isMaster 플래그를 신뢰하지 않고 DB의 현재 이메일을 서버 전용
     // allowlist 와 다시 대조해, 서비스 경계를 직접 호출해도 같은 권한 판정이 적용된다.
-    const user = await this.userRepo.findById(actor.userId);
+    const [membership, user] = await Promise.all([
+      getMembership(actor.userId, actor.workspaceId),
+      this.userRepo.findById(actor.userId),
+    ]);
     const viaMaster = isMasterEmail(user?.email);
-    return { allowed: viaMaster, viaMaster };
+    return { allowed: viaMaster || isApprovedAdmin(membership), viaMaster };
   }
 
   async requestNameChange(
