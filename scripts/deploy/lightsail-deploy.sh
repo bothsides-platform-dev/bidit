@@ -27,6 +27,12 @@ fi
 # 박제해, 파일을 고쳐도 반영되지 않는 장애를 만들었다. env 가 필요한 단계(빌드의
 # NEXT_PUBLIC_* 인라인 등)만 서브셸로 국한한다.
 
+# 레포는 private 이라 pull 이 read-only deploy key 로 인증한다(docs/DEPLOY_LIGHTSAIL.md
+# §서버 프로비저닝 2단계). 인증이 깨졌을 때 git 이 자격증명 프롬프트를 띄우면 배포가
+# 무한 대기에 빠진다 — 원인 파악이 실패보다 훨씬 느리므로 즉시 non-zero 로 죽인다.
+export GIT_TERMINAL_PROMPT=0
+export GIT_SSH_COMMAND="ssh -o BatchMode=yes"
+
 log "Pulling latest"
 git pull --ff-only
 

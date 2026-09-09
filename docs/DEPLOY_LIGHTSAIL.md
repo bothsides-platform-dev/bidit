@@ -47,13 +47,52 @@
 
 ## 서버 프로비저닝 & 첫 배포
 
+> **레포는 private 이다.** 익명 HTTPS 클론/pull 이 동작하지 않으므로, 코드를 받기 전에
+> 서버에 **read-only deploy key** 를 먼저 심어야 한다(아래 2단계). 이걸 건너뛰면
+> `lightsail-deploy.sh` 의 `git pull` 단계에서 배포가 실패한다.
+
 ```bash
 # 1) SSH 접속 (Lightsail AL2023 기본 사용자: ec2-user)
 ssh -i ~/Downloads/LightsailDefaultKey.pem ec2-user@<STATIC_IP>
 
-# 2) 레포 클론
+# 2) 레포 클론 — private 이라 deploy key 가 선행한다
 sudo dnf install -y git
-git clone <REPO_URL> bidit && cd bidit
+
+#    2-a) 서버 전용 키 생성 (passphrase 없음 — 배포 스크립트가 비대화식으로 돈다)
+ssh-keygen -t ed25519 -C "lightsail-deploy@supporter-b" \
+  -f ~/.ssh/id_ed25519_supporterb -N ""
+
+#    2-b) GitHub 호스트키 고정. deploy 스크립트가 BatchMode 로 돌아 대화식 수락이
+#         불가능하므로 미리 known_hosts 에 넣어 둔다.
+ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts
+ssh-keygen -lf <(ssh-keyscan -t ed25519 github.com 2>/dev/null)
+#         ↑ 출력된 SHA256 지문을 GitHub 공식 목록과 대조할 것:
+#           https://docs.github.com/en/authentication/keeping-your-account-secure/githubs-ssh-key-fingerprints
+
+#    2-c) 호스트 별칭으로 배선한다. `Host github.com` 에 직접 걸지 않는 이유:
+#         deploy key 는 GitHub 전체에서 레포 1개에만 붙일 수 있어, 같은 VM 에 다른
+#         private 레포(admin 콘솔 등)를 추가할 때 IdentitiesOnly 가 충돌한다.
+cat >> ~/.ssh/config <<'EOF'
+
+Host github-supporterb
+  HostName github.com
+  User git
+  IdentityFile ~/.ssh/id_ed25519_supporterb
+  IdentitiesOnly yes
+EOF
+chmod 600 ~/.ssh/config
+
+#    2-d) 아래 공개키를 레포 Settings → Deploy keys 에 **read-only** 로 등록한다.
+#         로컬(레포 admin 권한)에서:
+#           gh repo deploy-key add <pub파일> --title "lightsail-prod (read-only)" \
+#             -R bothsides-platform-dev/supporter-b
+#         `--allow-write` 를 붙이지 않는다 — 서버는 pull 만 하면 되고, 쓰기 권한이
+#         없어야 서버가 침해돼도 레포에 push 할 수 없다.
+cat ~/.ssh/id_ed25519_supporterb.pub
+
+#    2-e) 인증 확인 후 클론
+ssh -T git@github-supporterb   # "Hi bothsides-platform-dev/supporter-b! ...authenticated"
+git clone git@github-supporterb:bothsides-platform-dev/supporter-b.git bidit && cd bidit
 git checkout <배포브랜치>      # 예: main
 
 # 3) 1회 프로비저닝 — swap, Node22(공식 바이너리), pnpm, Docker, PM2, Caddy(systemd)
@@ -99,6 +138,31 @@ pm2 save
 cd bidit && bash scripts/deploy/lightsail-deploy.sh
 ```
 git pull → install → DB 기동 대기 → build → `pm2 reload` (무중단 reload). Caddy 는 건드리지 않음.
+
+> `git pull` 은 위 §서버 프로비저닝 2단계의 deploy key 로 인증한다. 스크립트는 `GIT_TERMINAL_PROMPT=0`
+> + `ssh -o BatchMode=yes` 로 돌기 때문에, 인증이 깨지면 자격증명 프롬프트에서 **멈추는 대신 즉시 실패**한다.
+> 복구는 §트러블슈팅의 "git 단계에서 인증 실패" 항목 참조.
+
+### 기존 서버를 HTTPS → SSH 로 옮기기 (public → private 전환 시 1회)
+
+레포가 public 이던 시절 익명 HTTPS 로 클론된 서버는 remote 를 바꿔야 한다. **visibility 를 뒤집기
+전에** 하는 것이 핵심이다 — SSH 인증은 public 레포에도 그대로 동작하므로, 먼저 배선하고 검증한
+뒤 private 으로 바꾸면 배포가 끊기는 창이 생기지 않는다.
+
+```bash
+# 서버에서 — 위 §프로비저닝 2-a ~ 2-d 로 키를 만들고 등록한 다음
+cd ~/bidit
+git remote -v                                   # 현재 HTTPS 인지 확인
+git remote set-url origin git@github-supporterb:bothsides-platform-dev/supporter-b.git
+ssh -T git@github-supporterb                    # 레포 이름으로 인증되는지
+git fetch --dry-run && echo "SSH fetch OK"      # ← 이게 통과해야 다음으로 간다
+```
+
+여기까지 green 이면 로컬에서 visibility 를 뒤집고, 서버에서 다시 `git fetch` + 배포 1회로 확인한다.
+
+```bash
+gh repo edit bothsides-platform-dev/supporter-b --visibility private --accept-visibility-changes
+```
 
 > 스키마 변경 시: 배포 **전에** `pnpm db:push` 로 수동 적용(계획 검토 — additive 면 적용, DROP/데이터 영향 구문은 중단). deploy 스크립트는 스키마를 자동 동기화하지 않는다. (migrate 정식 복귀는 추후 과제)
 
@@ -821,6 +885,7 @@ AL2023 은 glibc 2.34 라 **공식 Node 22 바이너리가 그대로 실행된�
 - **사이트 안 뜸 / TLS 안 됨**: 콘솔 방화벽 443 열렸는지(가장 흔함), `dig` 가 고정 IP 가리키는지, `journalctl -u caddy` 의 ACME 에러 확인.
 - **`node` 못 찾음 / 버전 이상**: `which node`(=`/usr/local/bin/node`), `node -v`(v22) 확인. AL2023 이 아니라 구형 AL2 면 `GLIBC_2.28 not found` 가 날 수 있다 → §Node 설치.
 - **빌드 중 OOM/멈춤**: `swapon --show` 로 swap 확인. `NODE_BUILD_HEAP_MB=1280 bash scripts/deploy/lightsail-deploy.sh` 로 더 낮춰 재시도.
+- **`lightsail-deploy.sh` 가 git 단계에서 인증 실패** (`Permission denied (publickey)` / `could not read Username`): 레포가 private 이라 deploy key 가 반드시 있어야 한다. 순서대로 확인 — ① `git remote -v` 가 `git@github-supporterb:...` 인지(HTTPS 면 §기존 서버를 HTTPS → SSH 로 옮기기), ② `ssh -T git@github-supporterb` 가 `Hi bothsides-platform-dev/supporter-b!` 로 응답하는지, ③ `gh repo deploy-key list -R bothsides-platform-dev/supporter-b` 에 키가 살아 있는지, ④ `~/.ssh/config` 의 별칭 블록에 `IdentitiesOnly yes` 가 있는지(없으면 ssh-agent 의 다른 키가 먼저 제시돼 거부된다), ⑤ `ssh-keygen -F github.com` 으로 known_hosts 항목이 있는지(BatchMode 라 대화식 수락이 불가능해 없으면 실패한다).
 - **`docker: permission denied`**: bootstrap 후 재접속(또는 `newgrp docker`)으로 docker 그룹 반영.
 - **DB 접속 실패**: `DATABASE_URL` 의 자격증명이 `.env.production` 의 `POSTGRES_*` 와 일치하는지, 컨테이너가 떴는지(`docker compose -f docker-compose.prod.yml ps`) 확인.
 - **배포 직후 앱이 안 뜸 + 로그에 `NEXT_PUBLIC_..._ORIGIN is set but ... is not`**: 두 오리진 중 하나만 `.env.production` 에 남은 상태다. `appOrigins()` 가 의도적으로 throw 한다(v0.4.3.0~) — 반쪽 설정은 partner 호스트 비색인과 `/login/ops` PKCE 호스트 핀을 조용히 함께 꺼뜨리기 때문. 고치는 법: 두 줄을 모두 채우거나 모두 지운 뒤 **재빌드**(`NEXT_PUBLIC_*` 는 빌드 타임 인라인이라 `pm2 reload` 만으론 반영 안 됨).

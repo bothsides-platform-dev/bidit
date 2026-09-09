@@ -168,4 +168,6 @@ jobs:
           path: |
             tests/perf/action-ids.json
             tests/perf/seed-data.json
-          retention-days: 14
+          # private 레포 + GitHub Free 는 Actions 아티팩트 저장소가 500MB 로 제한된다
+          # (public 이던 시절엔 무제한). ci.yml 과 같은 7일로 맞춰 상한을 넘기지 않게 한다.
+          retention-days: 7
