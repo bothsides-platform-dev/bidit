@@ -1,8 +1,6 @@
 'use server';
 
 import { z } from 'zod';
-import { getMembership, isApprovedAdmin } from '@/lib/auth/active-workspace';
-import { isMasterEmail } from '@/lib/auth/master-allowlist';
 import { requireSession } from '@/lib/auth/session';
 import { getWorkspaceService } from '@/lib/server/services/workspace';
 import type { ActionResult } from '@/lib/server/actions/_result';
@@ -14,10 +12,6 @@ export type RequestWorkspaceNameChangeResult = ActionResult;
 export async function requestWorkspaceNameChangeAction(input: { name: string }): Promise<RequestWorkspaceNameChangeResult> {
   const session = await requireSession().catch(() => null);
   if (!session?.user?.workspaceId) return { ok: false, error: 'FORBIDDEN' };
-  if (!isMasterEmail(session.user.email)) {
-    const membership = await getMembership(session.user.id, session.user.workspaceId);
-    if (!isApprovedAdmin(membership)) return { ok: false, error: 'FORBIDDEN' };
-  }
 
   const parsed = Input.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'INVALID_INPUT' };
@@ -25,5 +19,9 @@ export async function requestWorkspaceNameChangeAction(input: { name: string }):
     { userId: session.user.id, workspaceId: session.user.workspaceId },
     parsed.data.name,
   );
-  return result.ok ? { ok: true } : { ok: false, error: result.error };
+  if (result.ok) return { ok: true };
+  return {
+    ok: false,
+    error: result.error === 'FORBIDDEN_NOT_ADMIN' ? 'FORBIDDEN' : result.error,
+  };
 }

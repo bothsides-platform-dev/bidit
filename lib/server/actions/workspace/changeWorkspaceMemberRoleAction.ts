@@ -10,7 +10,7 @@ const ROLES = ['admin', 'member'] as const;
 
 /**
  * Approved workspace admins and configured operators can change an existing member's role.
- * Authorization is checked against the caller's CURRENT DB role, not the JWT.
+ * Authorization uses the caller's live DB membership or DB email plus the server allowlist.
  */
 export async function changeWorkspaceMemberRoleAction(input: {
   workspaceId: string;

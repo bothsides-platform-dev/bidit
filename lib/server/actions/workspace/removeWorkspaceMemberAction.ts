@@ -8,7 +8,7 @@ export type RemoveWorkspaceMemberResult = ActionResult;
 
 /**
  * Approved workspace admins and configured operators can remove a member.
- * Authorization is checked against the caller's CURRENT DB role, not the JWT.
+ * Authorization uses the caller's live DB membership or DB email plus the server allowlist.
  */
 export async function removeWorkspaceMemberAction(input: {
   workspaceId: string;
