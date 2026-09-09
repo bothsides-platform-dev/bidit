@@ -11,6 +11,7 @@ import type { ActionResult } from '@/lib/server/actions/_result';
 
 const Input = z
   .object({
+    workspaceId: z.string().min(1),
     limit: z.number().int().min(1).max(100).optional(),
     before: z
       // createdAt 은 repo 가 돌려준 ISO 문자열 그대로 — 임의 문자열이
@@ -34,7 +35,7 @@ const DEFAULT_LIMIT = 50;
  * DB 멤버십을 재검증한다.
  */
 export async function listAuditLogsAction(
-  input: ListAuditLogsInput = {},
+  input: ListAuditLogsInput,
 ): Promise<ListAuditLogsResult> {
   let session;
   try {
@@ -48,6 +49,7 @@ export async function listAuditLogsAction(
 
   const parsed = Input.safeParse(input);
   if (!parsed.success) return { ok: false, error: 'INVALID_INPUT' };
+  if (parsed.data.workspaceId !== wsId) return { ok: false, error: 'WORKSPACE_CHANGED' };
 
   if (!isMasterEmail(session.user.email)) {
     const membership = await getMembership(session.user.id, wsId);

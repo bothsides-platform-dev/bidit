@@ -38,6 +38,7 @@ export default async function MembersPage() {
   return (
     <PageEnter className="px-4 py-6 md:px-8 md:py-8 space-y-8 md:space-y-10">
       <MembersPanel
+        workspaceId={wsId}
         workspaceName={ws.name}
         initialMembers={ws.members}
         userRole={userRole}

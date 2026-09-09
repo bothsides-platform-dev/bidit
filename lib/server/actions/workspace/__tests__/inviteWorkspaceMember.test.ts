@@ -37,7 +37,16 @@ vi.mock('@/lib/auth/session', () => ({
       : Promise.reject(new Error('UNAUTHENTICATED')),
 }));
 
-import { inviteWorkspaceMemberAction } from '../inviteWorkspaceMemberAction';
+import { inviteWorkspaceMemberAction as rawInviteWorkspaceMemberAction } from '../inviteWorkspaceMemberAction';
+
+type InviteInput = Omit<Parameters<typeof rawInviteWorkspaceMemberAction>[0], 'workspaceId'>;
+
+function inviteWorkspaceMemberAction(input: InviteInput) {
+  return rawInviteWorkspaceMemberAction({
+    ...input,
+    workspaceId: sessionRef.value?.user.workspaceId ?? '',
+  });
+}
 
 let db: PgliteDB;
 
@@ -62,6 +71,20 @@ async function makeAdminSession(
 }
 
 describe('inviteWorkspaceMemberAction', () => {
+  it('stale 화면의 워크스페이스가 현재 세션과 다르면 아무 곳에도 초대하지 않는다', async () => {
+    const staleWorkspace = await seedPgWorkspace(db, '오래된 화면');
+    const activeWorkspace = await seedPgWorkspace(db, '현재 화면');
+    await makeAdminSession(activeWorkspace.id);
+
+    const r = await rawInviteWorkspaceMemberAction({
+      workspaceId: staleWorkspace.id,
+      email: 'wrong-workspace@example.com',
+    });
+
+    expect(r).toEqual({ ok: false, error: 'WORKSPACE_CHANGED' });
+    expect(await db.select().from(workspaceInvitations)).toHaveLength(0);
+  });
+
   it('returns UNAUTHENTICATED when there is no session', async () => {
     const r = await inviteWorkspaceMemberAction({ email: 'user@example.com' });
     expect(r).toEqual({ ok: false, error: 'UNAUTHENTICATED' });

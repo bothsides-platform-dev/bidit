@@ -9,6 +9,7 @@ import type { AuditLogCursor, AuditLogRecord } from '@/lib/server/repositories/t
 import type { WorkspaceType } from '@/lib/types/workspace';
 
 type Props = {
+  workspaceId: string;
   workspaceType: WorkspaceType;
   initialLogs: AuditLogRecord[];
   initialNextCursor: AuditLogCursor | null;
@@ -52,7 +53,7 @@ function entityHref(workspaceType: WorkspaceType, entityType: string | null, ent
   return workspaceType === 'buyer' ? `/rfp/${entityId}` : `/inbox/${entityId}`;
 }
 
-export function AuditLogPanel({ workspaceType, initialLogs, initialNextCursor }: Props) {
+export function AuditLogPanel({ workspaceId, workspaceType, initialLogs, initialNextCursor }: Props) {
   const [logs, setLogs] = useState(initialLogs);
   const [cursor, setCursor] = useState(initialNextCursor);
   const [isPending, startTransition] = useTransition();
@@ -60,7 +61,7 @@ export function AuditLogPanel({ workspaceType, initialLogs, initialNextCursor }:
   function loadMore() {
     if (!cursor) return;
     startTransition(async () => {
-      const r = await listAuditLogsAction({ before: cursor });
+      const r = await listAuditLogsAction({ workspaceId, before: cursor });
       if (!r.ok) return;
       setLogs((prev) => [...prev, ...r.logs]);
       setCursor(r.nextCursor);

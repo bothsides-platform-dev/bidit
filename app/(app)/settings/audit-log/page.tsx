@@ -44,6 +44,7 @@ export default async function AuditLogPage() {
   return (
     <PageEnter className="px-4 py-6 md:px-8 md:py-8">
       <AuditLogPanel
+        workspaceId={wsId}
         workspaceType={session.user.workspaceType}
         initialLogs={logs}
         initialNextCursor={nextCursor}

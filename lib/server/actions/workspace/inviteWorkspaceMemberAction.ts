@@ -10,6 +10,7 @@ export type InviteWorkspaceMemberResult = ActionResult;
  * Admin-only: invite an external user to the current workspace by email.
  */
 export async function inviteWorkspaceMemberAction(input: {
+  workspaceId: string;
   email: string;
   role?: 'admin' | 'member';
 }): Promise<InviteWorkspaceMemberResult> {
@@ -21,6 +22,9 @@ export async function inviteWorkspaceMemberAction(input: {
   }
 
   if (!session.user.workspaceId) return { ok: false, error: 'FORBIDDEN_NOT_ADMIN' };
+  if (input.workspaceId !== session.user.workspaceId) {
+    return { ok: false, error: 'WORKSPACE_CHANGED' };
+  }
 
   const actor = { userId: session.user.id, workspaceId: session.user.workspaceId };
   const service = await getWorkspaceService();

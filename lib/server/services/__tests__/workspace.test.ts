@@ -539,6 +539,14 @@ describe('WorkspaceService.resendInvite', () => {
       );
 
       expect(result.ok).toBe(true);
+      process.env.MASTER_ACCOUNT_EMAILS = '';
+      const logs = await (await getAuditLogRepo()).listForWorkspace(ws.id, { limit: 50 });
+      expect(logs.find((row) => row.action === 'workspace.member_invite_resend')).toMatchObject({
+        actorUserId: master.id,
+        actorWorkspaceId: ws.id,
+        viaMaster: true,
+      });
+      process.env.MASTER_ACCOUNT_EMAILS = 'ops@support-b.com';
     });
   });
 });
@@ -565,6 +573,12 @@ describe('WorkspaceService.cancelInvite', () => {
       expect(result.ok).toBe(true);
       const [invite] = await db.select().from(workspaceInvitations);
       expect(invite.status).toBe('expired');
+      const logs = await (await getAuditLogRepo()).listForWorkspace(ws.id, { limit: 50 });
+      expect(logs.find((row) => row.action === 'workspace.member_invite_cancel')).toMatchObject({
+        actorUserId: master.id,
+        actorWorkspaceId: ws.id,
+        viaMaster: true,
+      });
     });
   });
 

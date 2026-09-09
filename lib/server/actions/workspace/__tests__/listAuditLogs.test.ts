@@ -28,7 +28,17 @@ vi.mock('@/lib/auth/session', () => ({
       : Promise.reject(new Error('UNAUTHENTICATED')),
 }));
 
-import { listAuditLogsAction } from '../listAuditLogsAction';
+import {
+  listAuditLogsAction as rawListAuditLogsAction,
+  type ListAuditLogsInput,
+} from '../listAuditLogsAction';
+
+function listAuditLogsAction(input: Omit<ListAuditLogsInput, 'workspaceId'> = {}) {
+  return rawListAuditLogsAction({
+    ...input,
+    workspaceId: sessionRef.value?.user.workspaceId ?? '',
+  });
+}
 
 let db: PgliteDB;
 
@@ -51,6 +61,18 @@ async function seedEnv() {
 }
 
 describe('listAuditLogsAction', () => {
+  it('stale 화면의 워크스페이스가 현재 세션과 다르면 로그를 섞지 않는다', async () => {
+    const { admin, ws: activeWorkspace } = await seedEnv();
+    const staleWorkspace = await seedBuyerWorkspace(db);
+    sessionRef.value = {
+      user: { id: admin.id, workspaceId: activeWorkspace.id, role: 'admin' },
+    };
+
+    const r = await rawListAuditLogsAction({ workspaceId: staleWorkspace.id });
+
+    expect(r).toEqual({ ok: false, error: 'WORKSPACE_CHANGED' });
+  });
+
   it('비로그인 → UNAUTHENTICATED', async () => {
     const r = await listAuditLogsAction({});
     expect(r).toEqual({ ok: false, error: 'UNAUTHENTICATED' });

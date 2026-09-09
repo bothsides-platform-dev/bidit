@@ -11,6 +11,7 @@ export type RemoveWorkspaceMemberResult = ActionResult;
  * Authorization is checked against the caller's CURRENT DB role, not the JWT.
  */
 export async function removeWorkspaceMemberAction(input: {
+  workspaceId: string;
   userId: string;
 }): Promise<RemoveWorkspaceMemberResult> {
   let session;
@@ -22,6 +23,7 @@ export async function removeWorkspaceMemberAction(input: {
 
   const workspaceId = session.user.workspaceId;
   if (!workspaceId) return { ok: false, error: 'FORBIDDEN_NOT_ADMIN' };
+  if (input.workspaceId !== workspaceId) return { ok: false, error: 'WORKSPACE_CHANGED' };
 
   const actor = { userId: session.user.id, workspaceId };
   const service = await getWorkspaceService();

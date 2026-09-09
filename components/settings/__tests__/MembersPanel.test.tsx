@@ -85,6 +85,7 @@ const MEMBER: User = {
 };
 
 const baseProps = {
+  workspaceId: 'workspace-1',
   workspaceName: '서포터 B 페이',
   initialMembers: [ADMIN, MEMBER],
   initialPendingInvites: [],
@@ -122,6 +123,7 @@ describe('MembersPanel', () => {
 
     await waitFor(() =>
       expect(inviteWorkspaceMemberAction).toHaveBeenCalledWith({
+        workspaceId: 'workspace-1',
         email: 'new@example.com',
         role: 'admin',
       }),
@@ -143,6 +145,7 @@ describe('MembersPanel', () => {
 
     await waitFor(() =>
       expect(removeWorkspaceMemberAction).toHaveBeenCalledWith({
+        workspaceId: 'workspace-1',
         userId: MEMBER.id,
       }),
     );
@@ -171,6 +174,7 @@ describe('MembersPanel', () => {
 
     await waitFor(() =>
       expect(changeWorkspaceMemberRoleAction).toHaveBeenCalledWith({
+        workspaceId: 'workspace-1',
         userId: MEMBER.id,
         role: 'admin',
       }),

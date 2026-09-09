@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ComponentProps } from 'react';
 import type { AuditLogRecord } from '@/lib/server/repositories/types';
 
 const listAuditLogsAction = vi.fn();
@@ -8,7 +9,15 @@ vi.mock('@/lib/server/actions/workspace/listAuditLogsAction', () => ({
   listAuditLogsAction: (...a: unknown[]) => listAuditLogsAction(...a),
 }));
 
-import { AuditLogPanel } from '../AuditLogPanel';
+import { AuditLogPanel as ActualAuditLogPanel } from '../AuditLogPanel';
+
+type AuditLogPanelProps = Omit<ComponentProps<typeof ActualAuditLogPanel>, 'workspaceId'> & {
+  workspaceId?: string;
+};
+
+function AuditLogPanel({ workspaceId = 'workspace-1', ...props }: AuditLogPanelProps) {
+  return <ActualAuditLogPanel workspaceId={workspaceId} {...props} />;
+}
 
 function log(over: Partial<AuditLogRecord> = {}): AuditLogRecord {
   return {
@@ -34,6 +43,7 @@ describe('AuditLogPanel', () => {
   it('행위자 이름 + 한국어 행위 라벨 + 견적 코드 링크를 렌더한다 (buyer → /rfp/코드)', () => {
     render(
       <AuditLogPanel
+        workspaceId="workspace-1"
         workspaceType="buyer"
         initialLogs={[log()]}
         initialNextCursor={null}
@@ -183,7 +193,10 @@ describe('AuditLogPanel', () => {
     await waitFor(() => {
       expect(screen.getByText('박취소')).toBeInTheDocument();
     });
-    expect(listAuditLogsAction).toHaveBeenCalledWith({ before: cursor });
+    expect(listAuditLogsAction).toHaveBeenCalledWith({
+      workspaceId: 'workspace-1',
+      before: cursor,
+    });
     expect(screen.getByText('견적 요청을 취소했어요')).toBeInTheDocument();
     // 더 보기 버튼은 nextCursor null 이 되며 사라진다.
     expect(screen.queryByRole('button', { name: '더 보기' })).not.toBeInTheDocument();

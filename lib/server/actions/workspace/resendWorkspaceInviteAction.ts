@@ -11,6 +11,7 @@ export type ResendWorkspaceInviteResult = ActionResult;
  * Rotates the invitation token (old link is immediately invalidated).
  */
 export async function resendWorkspaceInviteAction(input: {
+  workspaceId: string;
   email: string;
 }): Promise<ResendWorkspaceInviteResult> {
   let session;
@@ -21,6 +22,9 @@ export async function resendWorkspaceInviteAction(input: {
   }
 
   if (!session.user.workspaceId) return { ok: false, error: 'FORBIDDEN_NOT_ADMIN' };
+  if (input.workspaceId !== session.user.workspaceId) {
+    return { ok: false, error: 'WORKSPACE_CHANGED' };
+  }
 
   const actor = { userId: session.user.id, workspaceId: session.user.workspaceId };
   const service = await getWorkspaceService();

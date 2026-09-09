@@ -13,6 +13,7 @@ const ROLES = ['admin', 'member'] as const;
  * Authorization is checked against the caller's CURRENT DB role, not the JWT.
  */
 export async function changeWorkspaceMemberRoleAction(input: {
+  workspaceId: string;
   userId: string;
   role: 'admin' | 'member';
 }): Promise<ChangeWorkspaceMemberRoleResult> {
@@ -25,6 +26,7 @@ export async function changeWorkspaceMemberRoleAction(input: {
 
   const workspaceId = session.user.workspaceId;
   if (!workspaceId) return { ok: false, error: 'FORBIDDEN_NOT_ADMIN' };
+  if (input.workspaceId !== workspaceId) return { ok: false, error: 'WORKSPACE_CHANGED' };
 
   if (!ROLES.includes(input.role)) return { ok: false, error: 'INVALID_INPUT' };
 
