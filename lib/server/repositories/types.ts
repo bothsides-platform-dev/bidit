@@ -1741,10 +1741,10 @@ export type AuditLogRecord = {
   createdAt: string;
   actorName: string | null;
   /**
-   * True when the actor is currently a master/operator (email on the
-   * MASTER_ACCOUNT_EMAILS allowlist). Derived at read time so master actions in
-   * any workspace are identifiable; reflects the current allowlist, not the
-   * write-time state. The actor's email itself is never exposed to the client.
+   * True when the action was performed through master/operator authority.
+   * New workspace-management events snapshot this at write time; legacy rows
+   * fall back to the actor's current allowlist membership. The actor's email
+   * itself is never exposed to the client.
    */
   viaMaster: boolean;
 };
