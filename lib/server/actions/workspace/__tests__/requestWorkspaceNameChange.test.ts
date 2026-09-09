@@ -14,6 +14,13 @@ vi.mock('@/lib/auth/session', () => ({
 
 import { requestWorkspaceNameChangeAction } from '../requestWorkspaceNameChangeAction';
 
+function requestNameChange(name: string) {
+  return requestWorkspaceNameChangeAction({
+    workspaceId: sessionRef.value?.user.workspaceId ?? 'missing-workspace',
+    name,
+  });
+}
+
 let db: PgliteDB;
 beforeEach(async () => {
   db = await setupWorkspaceActionEnv();
@@ -28,7 +35,7 @@ describe('requestWorkspaceNameChangeAction', () => {
     await seedMembership(db, ws.id, admin.id, 'admin');
     sessionRef.value = { user: { id: admin.id, workspaceId: ws.id, role: 'admin' } };
 
-    expect(await requestWorkspaceNameChangeAction({ name: '새 이름' })).toEqual({ ok: true });
+    expect(await requestNameChange('새 이름')).toEqual({ ok: true });
     const repo = await getWorkspaceRepo();
     expect(await repo.getName(ws.id)).toBe('기존 이름');
     expect(await repo.findLatestNameChangeRequest(ws.id)).toMatchObject({
@@ -44,22 +51,43 @@ describe('requestWorkspaceNameChangeAction', () => {
       actorUserId: admin.id,
       actorWorkspaceId: ws.id,
       entityId: ws.id,
-      metadata: { currentName: '기존 이름', requestedName: '새 이름' },
+      metadata: {
+        currentName: '기존 이름',
+        requestedName: '새 이름',
+        actorWasMaster: false,
+      },
     });
   });
 
   it('세션 또는 워크스페이스가 없으면 요청을 거부한다', async () => {
-    expect(await requestWorkspaceNameChangeAction({ name: '새 이름' })).toEqual({
+    expect(await requestNameChange('새 이름')).toEqual({
       ok: false,
       error: 'FORBIDDEN',
     });
 
     const user = await seedUser(db, { email: 'no-workspace@rename.com' });
     sessionRef.value = { user: { id: user.id, workspaceId: null, role: 'admin' } };
-    expect(await requestWorkspaceNameChangeAction({ name: '새 이름' })).toEqual({
+    expect(await requestNameChange('새 이름')).toEqual({
       ok: false,
       error: 'FORBIDDEN',
     });
+  });
+
+  it('화면을 연 뒤 다른 워크스페이스로 전환했으면 이름 변경 요청을 거부한다', async () => {
+    const admin = await seedUser(db, { email: 'stale@rename.com' });
+    const renderedWorkspace = await seedBuyerWorkspace(db, { name: '열어 둔 회사' });
+    const activeWorkspace = await seedBuyerWorkspace(db, { name: '전환한 회사' });
+    await seedMembership(db, activeWorkspace.id, admin.id, 'admin');
+    sessionRef.value = {
+      user: { id: admin.id, workspaceId: activeWorkspace.id, role: 'admin' },
+    };
+
+    expect(await requestWorkspaceNameChangeAction({
+      workspaceId: renderedWorkspace.id,
+      name: '탈취 이름',
+    })).toEqual({ ok: false, error: 'WORKSPACE_CHANGED' });
+    expect(await (await getWorkspaceRepo()).findLatestNameChangeRequest(renderedWorkspace.id)).toBeUndefined();
+    expect(await (await getWorkspaceRepo()).findLatestNameChangeRequest(activeWorkspace.id)).toBeUndefined();
   });
 
   it('마스터 계정은 멤버십 row 없이도 변경 요청을 만들 수 있다', async () => {
@@ -72,11 +100,19 @@ describe('requestWorkspaceNameChangeAction', () => {
         user: { id: master.id, email: 'ops@support-b.com', workspaceId: ws.id, role: 'admin' },
       };
 
-      expect(await requestWorkspaceNameChangeAction({ name: '새 이름' })).toEqual({ ok: true });
+      expect(await requestNameChange('새 이름')).toEqual({ ok: true });
       expect(await (await getWorkspaceRepo()).findLatestNameChangeRequest(ws.id)).toMatchObject({
         requestedByUserId: master.id,
         requestedName: '새 이름',
       });
+
+      process.env.MASTER_ACCOUNT_EMAILS = '';
+      const logs = await (await getAuditLogRepo()).listForWorkspace(ws.id, { limit: 50 });
+      expect(logs).toContainEqual(expect.objectContaining({
+        action: 'workspace.name_change_request',
+        actorUserId: master.id,
+        viaMaster: true,
+      }));
     } finally {
       if (previous === undefined) delete process.env.MASTER_ACCOUNT_EMAILS;
       else process.env.MASTER_ACCOUNT_EMAILS = previous;
@@ -89,11 +125,11 @@ describe('requestWorkspaceNameChangeAction', () => {
     await seedMembership(db, ws.id, admin.id, 'admin');
     sessionRef.value = { user: { id: admin.id, workspaceId: ws.id, role: 'admin' } };
 
-    expect(await requestWorkspaceNameChangeAction({ name: '   ' })).toEqual({
+    expect(await requestNameChange('   ')).toEqual({
       ok: false,
       error: 'INVALID_INPUT',
     });
-    expect(await requestWorkspaceNameChangeAction({ name: '가'.repeat(201) })).toEqual({
+    expect(await requestNameChange('가'.repeat(201))).toEqual({
       ok: false,
       error: 'INVALID_INPUT',
     });
@@ -106,7 +142,7 @@ describe('requestWorkspaceNameChangeAction', () => {
     await seedMembership(db, ws.id, admin.id, 'admin');
     sessionRef.value = { user: { id: admin.id, workspaceId: ws.id, role: 'admin' } };
 
-    expect(await requestWorkspaceNameChangeAction({ name: '같은 이름' })).toEqual({
+    expect(await requestNameChange('같은 이름')).toEqual({
       ok: false,
       error: 'SAME_NAME',
     });
@@ -121,7 +157,7 @@ describe('requestWorkspaceNameChangeAction', () => {
     const auditRepo = await getAuditLogRepo();
     const insertSpy = vi.spyOn(auditRepo, 'insert').mockRejectedValueOnce(new Error('audit unavailable'));
 
-    await expect(requestWorkspaceNameChangeAction({ name: '새 이름' })).rejects.toThrow('audit unavailable');
+    await expect(requestNameChange('새 이름')).rejects.toThrow('audit unavailable');
     expect(await (await getWorkspaceRepo()).findLatestNameChangeRequest(ws.id)).toBeUndefined();
     expect(await db.select().from(auditLogs)).toHaveLength(0);
     insertSpy.mockRestore();
@@ -133,8 +169,8 @@ describe('requestWorkspaceNameChangeAction', () => {
     await seedMembership(db, ws.id, admin.id, 'admin');
     sessionRef.value = { user: { id: admin.id, workspaceId: ws.id, role: 'admin' } };
 
-    expect(await requestWorkspaceNameChangeAction({ name: '첫 이름' })).toEqual({ ok: true });
-    expect(await requestWorkspaceNameChangeAction({ name: '둘째 이름' })).toEqual({ ok: false, error: 'ALREADY_PENDING' });
+    expect(await requestNameChange('첫 이름')).toEqual({ ok: true });
+    expect(await requestNameChange('둘째 이름')).toEqual({ ok: false, error: 'ALREADY_PENDING' });
     expect(await (await getWorkspaceRepo()).getName(ws.id)).toBe('기존 이름');
   });
 
@@ -144,7 +180,7 @@ describe('requestWorkspaceNameChangeAction', () => {
     await seedMembership(db, ws.id, member.id, 'member');
     sessionRef.value = { user: { id: member.id, workspaceId: ws.id, role: 'member' } };
 
-    expect(await requestWorkspaceNameChangeAction({ name: '탈취 이름' })).toEqual({ ok: false, error: 'FORBIDDEN' });
+    expect(await requestNameChange('탈취 이름')).toEqual({ ok: false, error: 'FORBIDDEN' });
     expect(await (await getWorkspaceRepo()).findLatestNameChangeRequest(ws.id)).toBeUndefined();
   });
 
@@ -155,7 +191,7 @@ describe('requestWorkspaceNameChangeAction', () => {
     await db.update(workspaces).set({ status: 'suspended' }).where(eq(workspaces.id, ws.id));
     sessionRef.value = { user: { id: admin.id, workspaceId: ws.id, role: 'admin' } };
 
-    expect(await requestWorkspaceNameChangeAction({ name: '새 이름' })).toEqual({
+    expect(await requestNameChange('새 이름')).toEqual({
       ok: false,
       error: 'WORKSPACE_INACTIVE',
     });

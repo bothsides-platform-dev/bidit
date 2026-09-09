@@ -17,6 +17,9 @@ describe('mutationErrorMessage', () => {
     expect(mutationErrorMessage('WORKSPACE_NOT_FOUND')).toBe(
       '워크스페이스를 찾지 못했어요.',
     );
+    expect(mutationErrorMessage('WORKSPACE_CHANGED')).toBe(
+      '다른 워크스페이스로 전환됐어요. 새로고침 후 다시 시도해 주세요.',
+    );
   });
 
   it('falls back to a generic message with the raw code for unknown errors', () => {

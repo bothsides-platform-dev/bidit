@@ -9,6 +9,7 @@ import type { AuditLogCursor, AuditLogRecord } from '@/lib/server/repositories/t
 import type { WorkspaceType } from '@/lib/types/workspace';
 
 type Props = {
+  workspaceId: string;
   workspaceType: WorkspaceType;
   initialLogs: AuditLogRecord[];
   initialNextCursor: AuditLogCursor | null;
@@ -28,6 +29,8 @@ const ACTION_LABELS: Record<string, string> = {
   'workspace.create': '워크스페이스를 만들었어요',
   'workspace.name_change_request': '회사 이름 변경을 요청했어요',
   'workspace.member_invite': '멤버를 초대했어요',
+  'workspace.member_invite_resend': '초대 메일을 다시 보냈어요',
+  'workspace.member_invite_cancel': '초대를 취소했어요',
   'workspace.invite_accept': '초대를 수락했어요',
   'workspace.member_role_change': '멤버 역할을 바꿨어요',
   'workspace.member_remove': '멤버를 내보냈어요',
@@ -50,7 +53,7 @@ function entityHref(workspaceType: WorkspaceType, entityType: string | null, ent
   return workspaceType === 'buyer' ? `/rfp/${entityId}` : `/inbox/${entityId}`;
 }
 
-export function AuditLogPanel({ workspaceType, initialLogs, initialNextCursor }: Props) {
+export function AuditLogPanel({ workspaceId, workspaceType, initialLogs, initialNextCursor }: Props) {
   const [logs, setLogs] = useState(initialLogs);
   const [cursor, setCursor] = useState(initialNextCursor);
   const [isPending, startTransition] = useTransition();
@@ -58,7 +61,7 @@ export function AuditLogPanel({ workspaceType, initialLogs, initialNextCursor }:
   function loadMore() {
     if (!cursor) return;
     startTransition(async () => {
-      const r = await listAuditLogsAction({ before: cursor });
+      const r = await listAuditLogsAction({ workspaceId, before: cursor });
       if (!r.ok) return;
       setLogs((prev) => [...prev, ...r.logs]);
       setCursor(r.nextCursor);

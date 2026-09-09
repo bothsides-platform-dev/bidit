@@ -7,10 +7,11 @@ import type { ActionResult } from '@/lib/server/actions/_result';
 export type CancelWorkspaceInviteResult = ActionResult;
 
 /**
- * Admin-only: cancel a pending workspace invitation by email.
+ * Approved workspace admins and configured operators can cancel a pending invitation.
  * Sets the invitation status to 'expired' (preserving audit trail).
  */
 export async function cancelWorkspaceInviteAction(input: {
+  workspaceId: string;
   email: string;
 }): Promise<CancelWorkspaceInviteResult> {
   let session;
@@ -21,6 +22,9 @@ export async function cancelWorkspaceInviteAction(input: {
   }
 
   if (!session.user.workspaceId) return { ok: false, error: 'FORBIDDEN_NOT_ADMIN' };
+  if (input.workspaceId !== session.user.workspaceId) {
+    return { ok: false, error: 'WORKSPACE_CHANGED' };
+  }
 
   const actor = { userId: session.user.id, workspaceId: session.user.workspaceId };
   const service = await getWorkspaceService();

@@ -85,6 +85,7 @@ const MEMBER: User = {
 };
 
 const baseProps = {
+  workspaceId: 'workspace-1',
   workspaceName: '서포터 B 페이',
   initialMembers: [ADMIN, MEMBER],
   initialPendingInvites: [],
@@ -122,10 +123,27 @@ describe('MembersPanel', () => {
 
     await waitFor(() =>
       expect(inviteWorkspaceMemberAction).toHaveBeenCalledWith({
+        workspaceId: 'workspace-1',
         email: 'new@example.com',
         role: 'admin',
       }),
     );
+  });
+
+  it('워크스페이스가 전환된 뒤 초대하면 새로고침 안내를 보여준다', async () => {
+    inviteWorkspaceMemberAction.mockResolvedValue({
+      ok: false,
+      error: 'WORKSPACE_CHANGED',
+    });
+    const user = userEvent.setup();
+    render(<MembersPanel {...baseProps} userRole="admin" />);
+
+    await user.type(screen.getByPlaceholderText('member@company.com'), 'new@example.com');
+    await user.click(screen.getByRole('button', { name: '초대 보내기' }));
+
+    expect(
+      await screen.findByText('다른 워크스페이스로 전환됐어요. 새로고침 후 다시 시도해 주세요.'),
+    ).toBeInTheDocument();
   });
 
   it('admin: kicks a member via dropdown and drops the row', async () => {
@@ -143,6 +161,7 @@ describe('MembersPanel', () => {
 
     await waitFor(() =>
       expect(removeWorkspaceMemberAction).toHaveBeenCalledWith({
+        workspaceId: 'workspace-1',
         userId: MEMBER.id,
       }),
     );
@@ -171,6 +190,7 @@ describe('MembersPanel', () => {
 
     await waitFor(() =>
       expect(changeWorkspaceMemberRoleAction).toHaveBeenCalledWith({
+        workspaceId: 'workspace-1',
         userId: MEMBER.id,
         role: 'admin',
       }),
