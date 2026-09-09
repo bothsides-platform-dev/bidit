@@ -199,7 +199,7 @@ export function QuoteTemplateList({
                 const overflow = allChips.length - MAX_CHIPS;
 
                 return (
-                  <li key={t.id} className={`space-y-2 py-4 transition-colors duration-100 ${savedTemplateId === t.id ? 'bg-[color-mix(in_srgb,var(--md-sys-color-tertiary)_10%,transparent)]' : ''}`}>
+                  <li key={t.id} className={`-mx-3 space-y-2 px-3 py-4 transition-colors duration-100 ${savedTemplateId === t.id ? 'bg-[color-mix(in_srgb,var(--md-sys-color-tertiary)_10%,transparent)]' : ''}`}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 space-y-0.5">
                         <p className="truncate text-[14px] font-medium text-[var(--md-sys-color-on-surface)]">

@@ -430,7 +430,7 @@ export function ContractTemplateList({ initialTemplates, loadFailed = false }: P
         ) : (
           <ul className="divide-y divide-[var(--md-sys-color-outline-variant)] border-y border-[var(--md-sys-color-outline-variant)]">
             {templates.map((t) => (
-            <li key={t.id} className={`flex items-center justify-between gap-2 py-4 transition-colors duration-100 ${savedTemplateId === t.id ? 'bg-[color-mix(in_srgb,var(--md-sys-color-tertiary)_10%,transparent)]' : ''}`}>
+            <li key={t.id} className={`-mx-3 flex items-center justify-between gap-2 px-3 py-4 transition-colors duration-100 ${savedTemplateId === t.id ? 'bg-[color-mix(in_srgb,var(--md-sys-color-tertiary)_10%,transparent)]' : ''}`}>
                 <div className="min-w-0 space-y-0.5">
                   {renamingId === t.id ? (
                     <form
