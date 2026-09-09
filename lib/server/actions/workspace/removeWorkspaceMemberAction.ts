@@ -7,7 +7,7 @@ import type { ActionResult } from '@/lib/server/actions/_result';
 export type RemoveWorkspaceMemberResult = ActionResult;
 
 /**
- * Admin-only: remove (kick) a member from the current workspace.
+ * Approved workspace admins and configured operators can remove a member.
  * Authorization is checked against the caller's CURRENT DB role, not the JWT.
  */
 export async function removeWorkspaceMemberAction(input: {

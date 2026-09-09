@@ -57,6 +57,9 @@ export class WorkspaceService {
     actor: WorkspaceActor,
     requestedName: string,
   ): Promise<ServiceResult<object>> {
+    const access = await this.workspaceManagementAccess(actor);
+    if (!access.allowed) return { ok: false, error: 'FORBIDDEN_NOT_ADMIN' };
+
     try {
       return await this._db.transaction(
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -81,7 +84,11 @@ export class WorkspaceService {
               action: 'workspace.name_change_request',
               entityType: 'workspace',
               entityId: actor.workspaceId,
-              metadata: { currentName, requestedName },
+              metadata: {
+                currentName,
+                requestedName,
+                actorWasMaster: access.viaMaster,
+              },
             },
             tx,
           );

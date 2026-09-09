@@ -9,7 +9,7 @@ export type ChangeWorkspaceMemberRoleResult = ActionResult;
 const ROLES = ['admin', 'member'] as const;
 
 /**
- * Admin-only: change an existing member's role (promote/demote).
+ * Approved workspace admins and configured operators can change an existing member's role.
  * Authorization is checked against the caller's CURRENT DB role, not the JWT.
  */
 export async function changeWorkspaceMemberRoleAction(input: {

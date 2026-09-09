@@ -44,7 +44,11 @@ describe('requestWorkspaceNameChangeAction', () => {
       actorUserId: admin.id,
       actorWorkspaceId: ws.id,
       entityId: ws.id,
-      metadata: { currentName: '기존 이름', requestedName: '새 이름' },
+      metadata: {
+        currentName: '기존 이름',
+        requestedName: '새 이름',
+        actorWasMaster: false,
+      },
     });
   });
 
@@ -77,6 +81,14 @@ describe('requestWorkspaceNameChangeAction', () => {
         requestedByUserId: master.id,
         requestedName: '새 이름',
       });
+
+      process.env.MASTER_ACCOUNT_EMAILS = '';
+      const logs = await (await getAuditLogRepo()).listForWorkspace(ws.id, { limit: 50 });
+      expect(logs).toContainEqual(expect.objectContaining({
+        action: 'workspace.name_change_request',
+        actorUserId: master.id,
+        viaMaster: true,
+      }));
     } finally {
       if (previous === undefined) delete process.env.MASTER_ACCOUNT_EMAILS;
       else process.env.MASTER_ACCOUNT_EMAILS = previous;

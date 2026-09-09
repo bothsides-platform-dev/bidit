@@ -7,7 +7,7 @@ import type { ActionResult } from '@/lib/server/actions/_result';
 export type InviteWorkspaceMemberResult = ActionResult;
 
 /**
- * Admin-only: invite an external user to the current workspace by email.
+ * Approved workspace admins and configured operators can invite an external user.
  */
 export async function inviteWorkspaceMemberAction(input: {
   workspaceId: string;

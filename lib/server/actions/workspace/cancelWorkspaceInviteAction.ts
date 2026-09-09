@@ -7,7 +7,7 @@ import type { ActionResult } from '@/lib/server/actions/_result';
 export type CancelWorkspaceInviteResult = ActionResult;
 
 /**
- * Admin-only: cancel a pending workspace invitation by email.
+ * Approved workspace admins and configured operators can cancel a pending invitation.
  * Sets the invitation status to 'expired' (preserving audit trail).
  */
 export async function cancelWorkspaceInviteAction(input: {

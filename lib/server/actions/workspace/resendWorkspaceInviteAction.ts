@@ -7,7 +7,7 @@ import type { ActionResult } from '@/lib/server/actions/_result';
 export type ResendWorkspaceInviteResult = ActionResult;
 
 /**
- * Admin-only: resend the invitation email for a pending workspace invitation.
+ * Approved workspace admins and configured operators can resend a pending invitation.
  * Rotates the invitation token (old link is immediately invalidated).
  */
 export async function resendWorkspaceInviteAction(input: {
