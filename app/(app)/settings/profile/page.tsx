@@ -145,6 +145,7 @@ export default async function ProfilePage({ searchParams }: Props) {
         <div className="divide-y divide-[var(--md-sys-color-outline-variant)] border-t border-[var(--md-sys-color-outline-variant)]">
           <WorkspaceLogoForm workspaceId={ws.id} name={ws.name} logoUpdatedAt={ws.logoUpdatedAt} canEdit={canEditWorkspace} />
           <WorkspaceNameForm
+            workspaceId={ws.id}
             currentName={ws.name}
             canEdit={canEditWorkspace}
             pendingRequest={latestNameChangeRequest?.status === 'pending'
