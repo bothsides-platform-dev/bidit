@@ -55,7 +55,6 @@ This file is the agent entry point — **`AGENTS.md` is a symlink to this file**
 | Icons | lucide-react | `lucide-react@1.14.0` |
 | Fonts | `next/font/local` — Pretendard Variable + JetBrains Mono Variable, self-hosted in `public/fonts/` | — |
 | Motion | `motion` (구 Framer Motion). 임포트는 `motion/react`. | `motion@12.38.0` |
-| DnD | @dnd-kit — 칸반 보드 드래그·정렬 (`fractional-indexing` 병용) | `@dnd-kit/core@6.3.1` |
 | Email | Resend + `@react-email/render` | `resend@6.4.0` |
 | Logging | Pino + Axiom (`next-axiom`) | `pino@10.3.1`, `next-axiom@1.10.0` |
 | Observability | Sentry | `@sentry/nextjs@10.51.0` |

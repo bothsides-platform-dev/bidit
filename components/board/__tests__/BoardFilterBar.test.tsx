@@ -63,14 +63,14 @@ describe('BoardFilterBar', () => {
     expect(replace.mock.calls[0][0]).toContain('deadline=d7');
   });
 
-  it('selecting a grade pushes ?grade=sme1 and preserves existing params', async () => {
+  it('selecting a grade pushes ?grade=sme1 and preserves unrelated params', async () => {
     const user = userEvent.setup();
-    mockSearchParams.mockReturnValue(new URLSearchParams('view=board'));
+    mockSearchParams.mockReturnValue(new URLSearchParams('deadline=d7'));
     render(<BoardFilterBar statusOptions={STATUS} gradeOptions={GRADE} />);
     await user.selectOptions(screen.getByLabelText('가맹점 등급'), 'sme1');
     const url = replace.mock.calls[0][0] as string;
     expect(url).toContain('grade=sme1');
-    expect(url).toContain('view=board');
+    expect(url).toContain('deadline=d7');
   });
 
   it('preserves status param when changing grade', async () => {
@@ -81,12 +81,5 @@ describe('BoardFilterBar', () => {
     const url = replace.mock.calls[0][0] as string;
     expect(url).toContain('status=active');
     expect(url).toContain('grade=sme1');
-  });
-
-  it('hideStatus: 보드 뷰에서는 status 칩 그룹을 숨기고 마감일·등급은 유지한다', () => {
-    render(<BoardFilterBar statusOptions={STATUS} gradeOptions={GRADE} hideStatus />);
-    expect(screen.queryByRole('group', { name: '상태' })).not.toBeInTheDocument();
-    expect(screen.getByRole('group', { name: '마감일' })).toBeInTheDocument();
-    expect(screen.getByLabelText('가맹점 등급')).toBeInTheDocument();
   });
 });
