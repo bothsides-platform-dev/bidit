@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, lte, or, sql } from 'drizzle-orm';
 import { notifications } from '@/lib/db/schema';
 import { teamThreadLink } from '@/lib/chat/thread-link';
 import type {
@@ -191,6 +191,7 @@ export class DrizzleNotificationRepository implements NotificationRepo {
     userId: string,
     workspaceId: string,
     threadLinkUrl: string,
+    readAt: string,
     tx?: Tx,
   ): Promise<void> {
     const db = this.h(tx);
@@ -204,6 +205,11 @@ export class DrizzleNotificationRepository implements NotificationRepo {
           eq(notifications.linkUrl, threadLinkUrl),
           // 파티션 프루닝 하한 — MARK_READ_LOOKBACK_DAYS 주석 참조.
           gte(notifications.createdAt, markReadCutoff()),
+          // 상한 = 읽음 cursor. cursor 저장 뒤에 도착한 메시지의 알림은 사용자가 본 적이
+          // 없다 — 걷으면 메시지는 안 읽음인데 알림만 사라진다. 알림 created_at 은 DB
+          // now(), cursor 는 앱/DB 시계라 미세하게 어긋날 수 있는데, 그때는 알림을
+          // **남기는** 쪽으로만 틀린다(다음 열람에서 걷힌다).
+          lte(notifications.createdAt, new Date(readAt)),
           // 이미 읽은 행은 건드리지 않는다 — readAt 이 뒤로 밀리면 안 된다.
           isNull(notifications.readAt),
         ),

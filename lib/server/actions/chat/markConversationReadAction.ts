@@ -40,6 +40,7 @@ export async function markConversationReadAction(
       ws.userId,
       ws.workspaceId,
       conversationThreadLink(parsed.data.conversationId),
+      result.readAt,
     );
   } catch (error) {
     console.warn('[chat] failed to clear in-app notifications for conversation', error);

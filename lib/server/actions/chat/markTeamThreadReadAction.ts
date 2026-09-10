@@ -30,6 +30,7 @@ export async function markTeamThreadReadAction(
       ws.userId,
       ws.workspaceId,
       teamThreadLink(parsed.data.rfpId),
+      result.readAt,
     );
   } catch (error) {
     console.warn('[team-chat] failed to clear in-app notifications for thread', error);
