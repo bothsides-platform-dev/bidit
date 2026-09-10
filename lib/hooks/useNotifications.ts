@@ -106,8 +106,11 @@ export function markThreadReadLocal(
   const readAt = new Date(readThrough).toISOString();
   useStore.setState((s) => ({
     notifications: s.notifications.map((n) =>
-      n.linkUrl === threadLinkUrl && canMarkRead(n)
-        ? { ...n, status: 'read' as const, readAt }
+        n.linkUrl === threadLinkUrl &&
+        canMarkRead(n) &&
+        Number.isFinite(Date.parse(n.createdAt)) &&
+        Date.parse(n.createdAt) <= readThrough
+          ? { ...n, status: 'read' as const, readAt }
         : n,
     ),
   }));

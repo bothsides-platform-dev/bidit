@@ -17,7 +17,8 @@
  *
  * Graceful no-op (load-bearing): getCentrifuge() returns null when
  * NEXT_PUBLIC_CENTRIFUGO_WS_URL is unset (dev + every test) — no connect, no
- * subscribe, no throw; connected stays null.
+ * subscribe, no throw; connected stays null. `connected` means this channel's
+ * subscription is ready, not merely that the shared socket is connected.
  */
 import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import type { PublicationContext, Subscription } from 'centrifuge';
@@ -76,18 +77,17 @@ export function useCentrifugoSubscription(
     });
     if (subRef) subRef.current = sub;
 
-    // Connection-level listeners stay in the hook (not subscription-level).
-    const onConnected = () => setConnected(true);
-    const onDisconnected = () => setConnected(false);
-    client.on('connected', onConnected);
-    client.on('disconnected', onDisconnected);
+    const onSubscriptionState = (ctx: { newState: string }) => {
+      setConnected(ctx.newState === 'subscribed');
+    };
+    sub.on('state', onSubscriptionState);
+    if (sub.state === 'subscribed') setConnected(true);
 
     client.connect();
 
     return () => {
+      sub.off('state', onSubscriptionState);
       disposeSubscription();
-      client.off('connected', onConnected);
-      client.off('disconnected', onDisconnected);
       if (subRef) subRef.current = null;
     };
   }, [channel]);

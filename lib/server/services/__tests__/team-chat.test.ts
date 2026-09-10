@@ -383,7 +383,7 @@ describe('TeamChatService.markRead + listThreads', () => {
 });
 
 describe('TeamChatService.sendMessage — notification fan-out', () => {
-  it('fans out one inapp notification to teammates (not author) on send, deduped within window', async () => {
+  it('fans out one inapp notification per message to teammates (not author)', async () => {
     const me = await seedUser(db, { email: 'me@b.com', name: '나' }); // author
     const mate = await seedUser(db, { email: 'mate@b.com', name: '동료' }); // recipient
     const ws = await seedBuyerWorkspace(db);
@@ -400,7 +400,7 @@ describe('TeamChatService.sendMessage — notification fan-out', () => {
       .select()
       .from(notifications)
       .where(and(eq(notifications.userId, mate.id), eq(notifications.type, 'team_chat.message')));
-    expect(mateNotifs).toHaveLength(1); // deduped within the window
+    expect(mateNotifs).toHaveLength(2);
 
     const meNotifs = await db
       .select()

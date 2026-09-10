@@ -321,6 +321,37 @@ describe('TeamThreadView — 렌더', () => {
     expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1);
   });
 
+  it('늦게 도착한 예전 팀 메시지가 최신 읽음 경계를 뒤로 돌리지 않는다', async () => {
+    render(base({ viewerUserId: 'u-me' }));
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1));
+    vi.mocked(markTeamThreadReadAction).mockClear();
+
+    act(() => {
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'tm-live-newer',
+        body: '최신 팀 메시지',
+        authorUserId: 'u-mate',
+        authorName: '동료',
+        createdAt: '2026-06-10T07:02:00.000Z',
+      });
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'tm-live-older',
+        body: '늦게 도착한 예전 메시지',
+        authorUserId: 'u-mate',
+        authorName: '동료',
+        createdAt: '2026-06-10T07:01:00.000Z',
+      });
+    });
+
+    await flushReadDebounce();
+    expect(markTeamThreadReadAction).toHaveBeenCalledWith({
+      rfpId: 'rfp-1',
+      throughMessageId: 'tm-live-newer',
+    });
+  });
+
   it('읽음 처리와 함께 그 스레드의 알림 배지를 로컬에서도 내린다', async () => {
     render(base());
 

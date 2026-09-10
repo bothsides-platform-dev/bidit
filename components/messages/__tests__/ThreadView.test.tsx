@@ -374,6 +374,37 @@ describe('ThreadView', () => {
     expect(markConversationReadAction).toHaveBeenCalledTimes(1);
   });
 
+  it('늦게 도착한 예전 메시지가 최신 읽음 경계를 뒤로 돌리지 않는다', async () => {
+    render(base());
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(1));
+    markConversationReadAction.mockClear();
+
+    act(() => {
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'live-newer',
+        body: '최신 메시지',
+        authorWsId: 'pg-1',
+        rfpId: null,
+        createdAt: '2026-05-27T06:02:00.000Z',
+      });
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'live-older',
+        body: '늦게 도착한 예전 메시지',
+        authorWsId: 'pg-1',
+        rfpId: null,
+        createdAt: '2026-05-27T06:01:00.000Z',
+      });
+    });
+
+    await flushReadDebounce();
+    expect(markConversationReadAction).toHaveBeenCalledWith({
+      conversationId: 'conv-1',
+      throughMessageId: 'live-newer',
+    });
+  });
+
   it('읽음 처리와 함께 그 대화의 알림 배지를 로컬에서도 내린다', async () => {
     render(base());
 

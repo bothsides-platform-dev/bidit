@@ -10,12 +10,16 @@ type Handler = (ctx: unknown) => void;
 function makeSub() {
   const handlers: Record<string, Handler[]> = {};
   return {
+    state: 'unsubscribed',
     handlers,
     on: vi.fn((event: string, cb: Handler) => {
       (handlers[event] ??= []).push(cb);
     }),
     subscribe: vi.fn(),
     unsubscribe: vi.fn(),
+    off: vi.fn((event: string, cb: Handler) => {
+      handlers[event] = (handlers[event] ?? []).filter((handler) => handler !== cb);
+    }),
     publish: vi.fn().mockResolvedValue(undefined),
     presenceStats: vi.fn().mockResolvedValue({ numClients: 1, numUsers: 1 }),
     __fire(event: string, ctx: unknown) {
@@ -142,7 +146,7 @@ describe('useTeamChannel — 라이브 연결 (URL 설정)', () => {
     expect(onMessage).not.toHaveBeenCalled();
   });
 
-  it('(d) connected 이벤트로 connected 상태가 전이된다', async () => {
+  it('(d) subscription state 이벤트로 connected 상태가 전이된다', async () => {
     const { renderHook, act } = await import('@testing-library/react');
     const { useTeamChannel } = await import('@/lib/hooks/useTeamChannel');
 
@@ -150,12 +154,12 @@ describe('useTeamChannel — 라이브 연결 (URL 설정)', () => {
     expect(result.current.connected).toBeNull();
 
     act(() => {
-      mockClient.__fire('connected', {});
+      mockSub.__fire('state', { oldState: 'subscribing', newState: 'subscribed' });
     });
     expect(result.current.connected).toBe(true);
 
     act(() => {
-      mockClient.__fire('disconnected', {});
+      mockSub.__fire('state', { oldState: 'subscribed', newState: 'subscribing' });
     });
     expect(result.current.connected).toBe(false);
   });

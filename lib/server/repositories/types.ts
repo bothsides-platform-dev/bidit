@@ -1716,8 +1716,8 @@ export type RfpTeamMessageRead = {
 };
 
 export interface RfpTeamMessageReadRepo {
-  /** (rfp, workspace, user) PK upsert — last_read_at 갱신(idempotent, monotonic). */
-  upsert(rfpId: string, workspaceId: string, userId: string, at: Date, tx?: Tx): Promise<void>;
+  /** (rfp, workspace, user) PK upsert — 저장된 monotonic last_read_at 반환. */
+  upsert(rfpId: string, workspaceId: string, userId: string, at: Date, tx?: Tx): Promise<Date>;
   /** (rfp, workspace, user) 읽음 row 조회. 없으면 undefined. */
   getFor(rfpId: string, workspaceId: string, userId: string, tx?: Tx): Promise<RfpTeamMessageRead | undefined>;
 }

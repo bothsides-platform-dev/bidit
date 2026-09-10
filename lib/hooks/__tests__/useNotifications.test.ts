@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ResponsePromise } from 'ky'
+import type { Notification } from '@/lib/types/notification'
 
 // Static mocks — these run before module loading
 vi.mock('@/lib/http', () => ({
@@ -464,6 +465,28 @@ describe('useNotifications — 라이브 알림 도착 시 toast', () => {
     })
 
     expect(useNotificationStoreForTest.getState().notifications[0]?.status).toBe('read')
+  })
+
+  it('읽음 상한보다 늦게 도착한 같은 스레드 알림은 로컬에서 지우지 않는다', async () => {
+    const { act } = await setupHook()
+    const { markThreadReadLocal, useNotificationStoreForTest } = await import(
+      '@/lib/hooks/useNotifications'
+    )
+    const linkUrl = '/messages?c=conv-partial'
+
+    act(() => {
+      useNotificationStoreForTest.getState().setAll([
+        { ...(makeNotif('n-newer', '아직 안 본 메시지') as Notification), linkUrl, createdAt: '2026-09-10T12:01:00.000Z' },
+        { ...(makeNotif('n-older', '이미 본 메시지') as Notification), linkUrl, createdAt: '2026-09-10T11:59:00.000Z' },
+      ])
+      markThreadReadLocal(linkUrl, '2026-09-10T12:00:00.000Z')
+    })
+
+    const byId = new Map(
+      useNotificationStoreForTest.getState().notifications.map((n) => [n.id, n.status]),
+    )
+    expect(byId.get('n-older')).toBe('read')
+    expect(byId.get('n-newer')).toBe('sent')
   })
 
   it('이미 읽은 알림은 markThreadReadLocal 이 다시 건드리지 않는다', async () => {

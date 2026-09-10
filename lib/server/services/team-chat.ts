@@ -189,33 +189,29 @@ export class TeamChatService {
         );
 
         if (mentioned.has(memberId)) {
-          if (!hadMention) {
-            pendingEmits.push(
-              ...(await notify(tx, {
-                recipients: [{ userId: memberId, workspaceId: actor.workspaceId, email: '' }],
-                channels: ['inapp'],
-                type: 'team_chat.mention',
-                title: `${authorName}님이 회원님을 언급했어요`,
-                body: preview,
-                createdAt,
-                linkUrl: teamThreadLink(input.rfpId),
-              })),
-            );
-          }
+          pendingEmits.push(
+            ...(await notify(tx, {
+              recipients: [{ userId: memberId, workspaceId: actor.workspaceId, email: '' }],
+              channels: ['inapp'],
+              type: 'team_chat.mention',
+              title: `${authorName}님이 회원님을 언급했어요`,
+              body: preview,
+              createdAt,
+              linkUrl: teamThreadLink(input.rfpId),
+            })),
+          );
         } else {
-          if (!hadGeneric) {
-            pendingEmits.push(
-              ...(await notify(tx, {
-                recipients: [{ userId: memberId, workspaceId: actor.workspaceId, email: '' }],
-                channels: ['inapp'],
-                type: 'team_chat.message',
-                title: `${authorName}님의 팀 메시지`,
-                body: preview,
-                createdAt,
-                linkUrl: teamThreadLink(input.rfpId),
-              })),
-            );
-          }
+          pendingEmits.push(
+            ...(await notify(tx, {
+              recipients: [{ userId: memberId, workspaceId: actor.workspaceId, email: '' }],
+              channels: ['inapp'],
+              type: 'team_chat.message',
+              title: `${authorName}님의 팀 메시지`,
+              body: preview,
+              createdAt,
+              linkUrl: teamThreadLink(input.rfpId),
+            })),
+          );
         }
 
         // 이메일 digest — (rfp, workspace, recipient) 윈도당 1회. 첫 팀 알림 발생
@@ -310,8 +306,8 @@ export class TeamChatService {
       return { ok: false, error: 'INVALID_READ_BOUNDARY' };
     }
     const at = new Date(Math.min(boundary.createdAt.getTime(), Date.now()));
-    await this.readRepo.upsert(rfpId, actor.workspaceId, actor.userId, at);
-    return { ok: true, readAt: at.toISOString() };
+    const persistedAt = await this.readRepo.upsert(rfpId, actor.workspaceId, actor.userId, at);
+    return { ok: true, readAt: persistedAt.toISOString() };
   }
 
   async listThreads(actor: TeamChatActor): Promise<ServiceResult<{ threads: TeamThreadEntry[] }>> {

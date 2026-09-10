@@ -10,7 +10,6 @@ import {
   getChatConversationRepo,
   getChatMessageRepo,
   getInvitationRepo,
-  getNotificationRepo,
   getRfpRepo,
   getUserRepo,
   getWorkspaceRepo,
@@ -41,18 +40,17 @@ let db: PgliteDB;
 let service: ChatService;
 
 async function buildService(): Promise<ChatService> {
-  const [convRepo, wsRepo, userRepo, attRepo, msgRepo, notifRepo, rfpRepo, invRepo] =
+  const [convRepo, wsRepo, userRepo, attRepo, msgRepo, rfpRepo, invRepo] =
     await Promise.all([
       getChatConversationRepo(),
       getWorkspaceRepo(),
       getUserRepo(),
       getAttachmentRepo(),
       getChatMessageRepo(),
-      getNotificationRepo(),
       getRfpRepo(),
       getInvitationRepo(),
     ]);
-  return new ChatService(db, convRepo, wsRepo, userRepo, attRepo, msgRepo, notifRepo, rfpRepo, invRepo);
+  return new ChatService(db, convRepo, wsRepo, userRepo, attRepo, msgRepo, rfpRepo, invRepo);
 }
 
 async function seedPair() {
@@ -156,7 +154,7 @@ describe('ChatService.sendMessage', () => {
     );
   });
 
-  it('still dedupes a second message within the same conversation window', async () => {
+  it('keeps an in-app notification boundary for every message in the same conversation window', async () => {
     const { buyerUser, buyerWs, pgUser, pgWs } = await seedPair();
 
     for (const body of ['첫 메시지', '둘째 메시지']) {
@@ -170,7 +168,7 @@ describe('ChatService.sendMessage', () => {
       .select()
       .from(notifications)
       .where(eq(notifications.userId, pgUser.id));
-    expect(notifs).toHaveLength(1);
+    expect(notifs).toHaveLength(2);
   });
 
   it('enqueues a windowed-digest outbox row for the offline counterparty', async () => {

@@ -15,6 +15,20 @@ import { useCallback, useEffect, useRef, type RefObject } from 'react';
 import { useMarkReadWhileVisible } from '@/lib/hooks/useMarkReadWhileVisible';
 import { useBottomInView } from './useBottomInView';
 
+type ReadBoundary = { id: string; createdAt: string };
+
+function newestBoundary(
+  current: ReadBoundary | undefined,
+  candidate: ReadBoundary | undefined,
+): ReadBoundary | undefined {
+  if (!candidate) return current;
+  if (!current) return candidate;
+  const currentAt = Date.parse(current.createdAt);
+  const candidateAt = Date.parse(candidate.createdAt);
+  if (!Number.isFinite(currentAt) || candidateAt >= currentAt) return candidate;
+  return current;
+}
+
 export function useThreadReadTracking({
   threadKey,
   initialBoundary,
@@ -25,19 +39,25 @@ export function useThreadReadTracking({
   /** 스레드 식별자(conversationId 또는 rfpId). 바뀌면 새 스레드로 본다. */
   threadKey: string;
   /** 서버가 검증할, 화면에 이미 그려진 마지막 메시지. */
-  initialBoundary?: { id: string; createdAt: string };
+  initialBoundary?: ReadBoundary;
   run: (key: string, throughMessageId: string) => void;
   /** 메시지 목록 스크롤 컨테이너. */
   listRef: RefObject<HTMLElement | null>;
   /** 목록 맨 끝 센티널 — 이게 보이면 최신 메시지가 화면에 있다. */
   bottomRef: RefObject<HTMLElement | null>;
-}): (boundary: { id: string; createdAt: string }) => void {
+}): (boundary: ReadBoundary) => void {
   // 순환을 끊는 유일한 ref. 관찰자는 이걸 통해 아래에서 만들어지는 resume 에
   // 닿는다(마운트 시점엔 no-op, 커밋 후 채워진다).
   const resumeRef = useRef<() => void>(() => {});
   const boundaryRef = useRef(initialBoundary);
+  const boundaryThreadKeyRef = useRef(threadKey);
   useEffect(() => {
-    boundaryRef.current = initialBoundary;
+    if (boundaryThreadKeyRef.current !== threadKey) {
+      boundaryThreadKeyRef.current = threadKey;
+      boundaryRef.current = initialBoundary;
+      return;
+    }
+    boundaryRef.current = newestBoundary(boundaryRef.current, initialBoundary);
   }, [threadKey, initialBoundary]);
 
   const isBottomInView = useBottomInView({
@@ -59,13 +79,8 @@ export function useThreadReadTracking({
     resumeRef.current = resume;
   });
 
-  return useCallback((boundary: { id: string; createdAt: string }) => {
-    const current = boundaryRef.current;
-    const currentAt = current ? Date.parse(current.createdAt) : Number.NEGATIVE_INFINITY;
-    const nextAt = Date.parse(boundary.createdAt);
-    if (!current || !Number.isFinite(currentAt) || nextAt >= currentAt) {
-      boundaryRef.current = boundary;
-    }
+  return useCallback((boundary: ReadBoundary) => {
+    boundaryRef.current = newestBoundary(boundaryRef.current, boundary);
     markRead();
   }, [markRead]);
 }
