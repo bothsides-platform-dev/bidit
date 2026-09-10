@@ -325,6 +325,70 @@ describe('useMarkReadWhileVisible', () => {
     expect(run).toHaveBeenCalledTimes(1);
   });
 
+  it('does NOT advance the cursor when the tab hides before the debounce fires', () => {
+    // 도착 시점엔 보였어도, 디바운스가 도는 사이 탭을 가렸다면 사용자는 그 메시지를
+    // 본 게 아니다 — 게이트는 예약 시점이 아니라 **실행 시점**에 판정해야 한다.
+    const run = vi.fn();
+    const { result } = renderHook(() => useMarkReadWhileVisible({ key: 'conv-1', run }));
+    run.mockClear();
+
+    act(() => result.current.markRead());
+    act(() => setVisibility('hidden'));
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(run).not.toHaveBeenCalled();
+
+    // 막혀서 놓친 요청은 버리지 않고 탭 복귀 때 한 번 만회한다.
+    act(() => {
+      setVisibility('visible');
+      vi.runAllTimers();
+    });
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it('does NOT advance the cursor when the newest message scrolls off screen before the debounce fires', () => {
+    let onScreen = true;
+    const run = vi.fn();
+    const { result } = renderHook(() =>
+      useMarkReadWhileVisible({ key: 'conv-1', run, isOnScreen: () => onScreen }),
+    );
+    run.mockClear();
+
+    act(() => result.current.markRead());
+    onScreen = false;
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(run).not.toHaveBeenCalled();
+
+    onScreen = true;
+    act(() => result.current.resume());
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a hidden-tab arrival pending when an earlier visible arrival\'s timer fires', () => {
+    // A 가 보일 때 도착해 예약 → 탭을 가림 → B 가 가려진 채 도착. A 의 예약이
+    // 실행되며 놓친 표시까지 지우면 B 는 보지도 않았는데 읽음이 되고 알림도 사라진다.
+    const run = vi.fn();
+    const { result } = renderHook(() => useMarkReadWhileVisible({ key: 'conv-1', run }));
+    run.mockClear();
+
+    act(() => result.current.markRead());
+    act(() => setVisibility('hidden'));
+    act(() => result.current.markRead());
+    act(() => {
+      vi.runAllTimers();
+    });
+    expect(run).not.toHaveBeenCalled();
+
+    act(() => {
+      setVisibility('visible');
+      vi.runAllTimers();
+    });
+    expect(run).toHaveBeenCalledTimes(1);
+  });
+
   it('does not run after unmount', () => {
     const run = vi.fn();
     const { result, unmount } = renderHook(() =>
