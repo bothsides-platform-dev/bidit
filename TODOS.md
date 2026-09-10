@@ -957,7 +957,7 @@ v0.4.42.1 을 main 으로 컷하는 과정의 독립 적대 리뷰가 세 가지
 
 **해결(v0.4.47.0)**: 프레즌스를 트랜잭션 진입 전으로 옮기고, **대화당 1회**로 줄였다. 두 번째가 핵심이다 — Centrifugo `presence` 응답은 애초에 채널 전체 클라이언트 목록이라, 수신자마다 부르면 같은 페이로드를 N번 받아 1비트씩만 쓰고 버리는 구조였다(트랜잭션 밖으로 뺀 1차 수정만으로는 N 직렬이 N 병렬이 됐을 뿐 횟수는 그대로였다). `presentUserIdsInConversation(convId): Set<userId>` 가 새 진입점이고 `isUserPresentInConversation` 은 그 위의 얇은 래퍼로 남아 digest flush 가 계속 쓴다. 첫 메시지(대화 행이 아직 없음)에는 아예 호출하지 않는다 — 채널이 `chatChannel(conversationId)` 로 파생되는데 그 UUID 가 트랜잭션 안에서 만들어져 아무도 구독할 수 없으므로 반드시 false 다.
 
-**남은 것 (P3)**: 같은 루프의 `hasPendingChatNotification` 이 여전히 수신자당 1쿼리다(`IN (...)` 배치 대상). `team-chat.ts` 는 수신자당 `hasPendingTeamNotification` + `hasPendingTeamMentionNotification` 2회라 더 심하고, **프레즌스 이관도 안 됐다** — 팀 채팅 경로는 손대지 않았다. `NotificationRepo` 에 `hasPendingFor(userIds[])` 배치 메서드를 추가하면 양쪽이 함께 접힌다.
+**남은 것 (P3)**: `team-chat.ts` 의 이메일 다이제스트 게이트는 수신자당 `hasPendingTeamNotification` + `hasPendingTeamMentionNotification` 2회를 직렬로 수행한다. 인앱 알림은 v0.11.1.3에서 메시지별 읽음 경계를 보존하도록 윈도 중복 제거를 쓰지 않게 됐고, 남은 두 쿼리는 **이메일만** 묶기 위한 것이다. 수신자 배치 판정으로 접힐 수 있다. 팀 채팅 프레즌스 이관은 아직 안 됐다.
 
 ### ~~`approvedMemberRecipients` 를 같은 tx·같은 인자로 두 번 부른다 (P4)~~ — 해결 (v0.4.47.0)
 `RfpService.createRfp` 가 PG 워크스페이스마다(이메일 팬아웃 / 인앱 팬아웃) 같은 조회를 두 번 했다. `acceptPgRequest` 도 같은 모양이었고 첫 호출이 `if` 블록 안이라 조건 밖으로 끌어올렸다(인앱 팬아웃은 무조건 나간다). 호출 횟수 가드 테스트 동반.
@@ -989,7 +989,7 @@ v0.4.42.1 을 main 으로 컷하는 과정의 독립 적대 리뷰가 세 가지
 - `outbox/{chat,team-chat}-digest-flush.ts` — 엔트리당 `markResult`. 배치 상한 있음
 - `workspace.ts` `listMembershipsWithMembers` — 사용자 소속 워크스페이스 수(보통 1~3)
 - `workspace.ts` 워크스페이스 생성 시 초기 멤버 insert — 1회성
-- `services/{chat,team-chat}.ts` digest 루프 — 수신자당 `hasPending*Notification` 1쿼리. **수신자별 게이팅이라 `notify()` 배치화로 접을 수 없다** — 접으려면 그 판정을 배치 조회로 먼저 바꿔야 한다
+- `services/team-chat.ts` 이메일 digest 루프 — 수신자당 `hasPendingTeamNotification` + `hasPendingTeamMentionNotification` 2쿼리. **수신자별 게이팅이라 `notify()` 배치화로 접을 수 없다** — 접으려면 그 판정을 배치 조회로 먼저 바꿔야 한다
 - `rfp.ts` 초대 draft/승격·재요청 루프 — PG 수 상한
 
 ### RFP 발송 초대 팬아웃이 트랜잭션 안에서 PG마다 이메일을 렌더링한다 (P3)

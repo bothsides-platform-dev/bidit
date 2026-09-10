@@ -21,7 +21,6 @@ import { ACCEPT_EXT } from '@/lib/server/storage/constants';
 import { sendTeamMessageAction } from '@/lib/server/actions/chat/sendTeamMessageAction';
 import { markTeamThreadReadAction } from '@/lib/server/actions/chat/markTeamThreadReadAction';
 import { markThreadReadLocal } from '@/lib/hooks/useNotifications';
-import { useOpenThreadRegistration } from '@/lib/chat/open-threads';
 import { teamThreadLink } from '@/lib/chat/thread-link';
 import { useTeamChannel, type TeamLivePayload } from '@/lib/hooks/useTeamChannel';
 import { toast } from '@/lib/toast';
@@ -103,7 +102,7 @@ export function TeamThreadView({ rfpId, workspaceId, viewerUserId, viewerAvatarU
     },
   });
 
-  const { connected } = useTeamChannel(rfpId, workspaceId, {
+  useTeamChannel(rfpId, workspaceId, {
     onMessage: (data: TeamLivePayload) => {
       if (!data.id || typeof data.body !== 'string' || !data.createdAt) return;
       const id = data.id;
@@ -132,9 +131,6 @@ export function TeamThreadView({ rfpId, workspaceId, viewerUserId, viewerAvatarU
       );
     },
   });
-
-  // 라이브 말풍선을 실제로 받을 수 있을 때만 중복 토스트를 억제한다.
-  useOpenThreadRegistration(teamThreadLink(rfpId), connected === true);
 
   async function handleSend(): Promise<void> {
     if (sending) return;

@@ -19,7 +19,6 @@ import { create } from 'zustand';
 import { canMarkRead, isUnread, type Notification } from '@/lib/types/notification';
 import { http } from '@/lib/http';
 import { toast } from '@/lib/toast';
-import { isThreadOpen } from '@/lib/chat/open-threads';
 import { markNotificationReadAction } from '@/lib/server/actions/notifications/markNotificationReadAction';
 import { markAllReadAction } from '@/lib/server/actions/notifications/markAllReadAction';
 import { retryEmailNotificationAction } from '@/lib/server/actions/notifications/retryEmailNotificationAction';
@@ -134,9 +133,6 @@ function onNotificationsRoute(): boolean {
 // 새 라이브 알림에 대해 경로 게이트 + coalesce 를 적용해 toast 를 발화한다.
 function maybeToastNew(n: Notification): void {
   if (onNotificationsRoute()) return;
-  // 그 스레드를 지금 보고 있으면 토스트는 중복 신호다 — 메시지는 이미 눈앞에
-  // 말풍선으로 도착했다. 판정 키는 알림 행이 든 스레드 링크 그대로다.
-  if (isThreadOpen(n.linkUrl)) return;
   const now = Date.now();
   if (now - lastToastAt < TOAST_COALESCE_MS) return;
   lastToastAt = now;

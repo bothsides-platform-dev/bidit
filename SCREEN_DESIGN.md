@@ -123,7 +123,7 @@ Admin console (별도 top-level 트리, role-guard in admin/(protected)/layout.t
 
 > 실시간 전송은 Centrifugo(자체호스팅 WS) — 미설정 환경에선 정적 로드로 graceful degrade. 이메일 알림은 presence 억제 + 윈도우 digest로 폭주 방지. `/notifications`·`/workspace/new` 도 buyer·pg 공통.
 >
-> 라이브 인앱 알림 toast(`useNotifications`): 접속 중 새 알림이 SSE 로 도착하면 제목을 우하단 toast 로 발화한다(미읽음 배지는 그대로 증가). 폭주 방지로 `TOAST_COALESCE_MS`(4s) 윈도우 안에는 1회만 발화하고, 사용자가 이미 `/notifications` 목록을 보고 있으면 중복 신호이므로 생략한다. **채팅 알림은 그 스레드를 지금 보고 있어도 생략한다** — 판정은 알림의 `linkUrl`(단일 출처 `lib/chat/thread-link.ts`)이 `lib/chat/open-threads.ts`의 열린-스레드 레지스트리에 있는지로 하며, 메시지는 이미 말풍선으로 눈앞에 도착했으므로 중복이다(그 대화가 읽음 처리되면 사이드바 배지도 `markThreadReadLocal`로 낙관적으로 즉시 내려간다). 재구독 race 로 같은 id가 다시 와도 prepend 전 신규 판정으로 중복 toast 를 막는다(history hydrate 는 `setAll` 경로라 toast 안 됨). toast 폭은 `min(92vw,24rem)` 로 클램프 + 제목 `line-clamp-2`.
+> 라이브 인앱 알림 toast(`useNotifications`): 접속 중 새 알림이 SSE 로 도착하면 제목을 우하단 toast 로 발화한다(미읽음 배지는 그대로 증가). 폭주 방지로 `TOAST_COALESCE_MS`(4s) 윈도우 안에는 1회만 발화하고, 사용자가 이미 `/notifications` 목록을 보고 있으면 중복 신호이므로 생략한다. **채팅 스레드를 보고 있어도 toast는 유지한다** — SSE 알림은 실시간 메시지 publish 성공보다 먼저 발생하고 publish는 best-effort라, 열린 화면만으로 말풍선 도착을 증명할 수 없다. 재구독 race 로 같은 id가 다시 와도 prepend 전 신규 판정으로 중복 toast 를 막는다(history hydrate 는 `setAll` 경로라 toast 안 됨). toast 폭은 `min(92vw,24rem)` 로 클램프 + 제목 `line-clamp-2`.
 
 ### 0.4 Core Flow Diagrams
 

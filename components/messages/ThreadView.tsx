@@ -14,7 +14,6 @@ import { DRAFT_OWNER_ID, ACCEPT_EXT } from '@/lib/server/storage/constants';
 import { sendChatMessageAction } from '@/lib/server/actions/chat/sendChatMessageAction';
 import { markConversationReadAction } from '@/lib/server/actions/chat/markConversationReadAction';
 import { markThreadReadLocal } from '@/lib/hooks/useNotifications';
-import { useOpenThreadRegistration } from '@/lib/chat/open-threads';
 import { conversationThreadLink } from '@/lib/chat/thread-link';
 import { useChatChannel } from '@/lib/hooks/useChatChannel';
 import { useConversationReadReceipt } from '@/lib/chat/read-state/client';
@@ -240,13 +239,6 @@ export function ThreadView({
     },
     onRead: readReceipt.accept,
   });
-
-  // 실제 채팅 탭이 보이고 라이브 말풍선을 받을 수 있을 때만 토스트를 억제한다.
-  // 다른 탭이나 연결 끊김 상태에서는 SSE 알림이 유일한 즉시 신호일 수 있다.
-  useOpenThreadRegistration(
-    conversationThreadLink(conversationId),
-    connected === true && (variant !== 'tabs' || activeTab === 'chat'),
-  );
 
   const totalAttachmentCount = useMemo(
     () => localMessages.reduce((sum, m) => sum + m.attachments.length, 0),

@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event';
 import type { UseChatChannelResult } from '@/lib/hooks/useChatChannel';
 import type { ChatReadEvent } from '@/lib/chat/read-state/event';
 import { NEW_TAB_NOTICE } from '@/lib/a11y/link-notice';
-import { isThreadOpen } from '@/lib/chat/open-threads';
 
 class ResizeObserverStub {
   observe() {}
@@ -414,22 +413,6 @@ describe('ThreadView', () => {
         '2026-05-27T05:00:00.000Z',
       ),
     );
-  });
-
-  it('열려 있는 동안 그 대화를 열린 스레드로 등록한다(토스트 억제 근거)', () => {
-    channelResult = { typingUserIds: [], sendTyping, connected: true };
-    const { unmount } = render(base());
-    expect(isThreadOpen('/messages?c=conv-1')).toBe(true);
-
-    unmount();
-    expect(isThreadOpen('/messages?c=conv-1')).toBe(false);
-  });
-
-  it('실시간 메시지를 받을 수 없으면 열린 스레드로 등록하지 않는다', () => {
-    channelResult = { typingUserIds: [], sendTyping, connected: false };
-    render(base());
-
-    expect(isThreadOpen('/messages?c=conv-1')).toBe(false);
   });
 
   it('상대 읽음 영수증 projection을 Conversation read-state hook에 위임한다', () => {
@@ -1601,11 +1584,9 @@ describe('variant=tabs', () => {
     const user = userEvent.setup();
     channelResult = { typingUserIds: [], sendTyping, connected: true };
     render(<ThreadView {...baseProps} />);
-    expect(isThreadOpen('/messages?c=conv-1')).toBe(true);
 
     await user.click(screen.getByRole('tab', { name: 'RFP' }));
     expect(screen.getByTestId('context-panel')).toBeInTheDocument();
-    expect(isThreadOpen('/messages?c=conv-1')).toBe(false);
     const composer = screen.queryByPlaceholderText('메시지를 입력하세요…')
       ?? screen.queryByRole('textbox');
     expect(composer).not.toBeInTheDocument();
