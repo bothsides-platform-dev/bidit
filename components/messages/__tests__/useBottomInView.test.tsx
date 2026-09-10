@@ -46,6 +46,20 @@ function harness(onEnter: () => void) {
   });
 }
 
+/** 센티널 노드를 갈아 끼울 수 있는 하네스 — 탭 전환으로 메시지 목록이 다시 마운트되면
+ *  ref 객체는 그대로인데 `ref.current` 가 새 노드가 된다. */
+function swappableHarness(onEnter: () => void) {
+  const root = document.createElement('div');
+  const slot: { target: HTMLDivElement | null } = { target: document.createElement('div') };
+  const hook = renderHook(() => {
+    const rootRef = useRef<HTMLDivElement>(root);
+    const targetRef = useRef<HTMLDivElement | null>(null);
+    targetRef.current = slot.target;
+    return useBottomInView({ rootRef, targetRef, onEnter });
+  });
+  return { ...hook, slot };
+}
+
 beforeEach(() => {
   observers.length = 0;
   vi.stubGlobal('IntersectionObserver', IntersectionObserverStub);
@@ -94,6 +108,53 @@ describe('useBottomInView', () => {
     // 관찰자는 같은 값을 여러 번 보고한다.
     act(() => observers[0].fire(true));
     expect(onEnter).toHaveBeenCalledTimes(1);
+  });
+
+  it('rebinds to a replacement sentinel when the list remounts', () => {
+    // ThreadView tabs 변형: RFP/파일 탭을 다녀오면 목록과 센티널이 새로 마운트된다.
+    // 떨어져 나간 옛 노드를 계속 보면 게이트가 실제 화면을 영영 따라가지 못한다.
+    const { slot, rerender } = swappableHarness(vi.fn());
+    const first = observers[0];
+    const replacement = document.createElement('div');
+
+    slot.target = replacement;
+    rerender();
+
+    expect(first.disconnected).toBe(true);
+    expect(observers).toHaveLength(2);
+    expect(observers[1].observed).toEqual([replacement]);
+  });
+
+  it('catches up via onEnter once the replacement sentinel reports in view', () => {
+    const onEnter = vi.fn();
+    const { result, slot, rerender } = swappableHarness(onEnter);
+    act(() => observers[0].fire(false)); // 옛 노드가 떨어져 나가며 '안 보임'을 보고
+
+    slot.target = document.createElement('div');
+    rerender();
+    act(() => observers[1].fire(true));
+
+    expect(result.current()).toBe(true);
+    expect(onEnter).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports not in view while the sentinel is unmounted (another tab is showing)', () => {
+    // 목록이 아예 없으면 도착한 메시지는 눈에 보일 수가 없다 — 게이트를 닫는다.
+    const { result, slot, rerender } = swappableHarness(vi.fn());
+
+    slot.target = null;
+    rerender();
+
+    expect(observers[0].disconnected).toBe(true);
+    expect(result.current()).toBe(false);
+  });
+
+  it('does not re-observe on re-render while the sentinel is the same node', () => {
+    const { rerender } = swappableHarness(vi.fn());
+    rerender();
+    rerender();
+    expect(observers).toHaveLength(1);
+    expect(observers[0].disconnected).toBe(false);
   });
 
   it('disconnects the observer on unmount', () => {

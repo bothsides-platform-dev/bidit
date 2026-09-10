@@ -207,8 +207,8 @@ export class DrizzleNotificationRepository implements NotificationRepo {
           eq(notifications.linkUrl, threadLinkUrl),
           // 파티션 프루닝 하한 — MARK_READ_LOOKBACK_DAYS 주석 참조.
           gte(notifications.createdAt, markReadCutoff()),
-          // cursor 를 기록한 뒤 이 UPDATE 사이에 새 메시지가 도착할 수 있다.
-          // 그 알림까지 지우면 사용자가 아직 못 본 메시지를 읽었다고 거짓말한다.
+          // 상한 = 읽음 cursor. cursor 저장 뒤 이 UPDATE 전에 도착한 메시지의
+          // 알림까지 지우면 사용자가 아직 못 본 메시지를 읽었다고 거짓말한다.
           lte(notifications.createdAt, readThrough),
           // 이미 읽은 행은 건드리지 않는다 — readAt 이 뒤로 밀리면 안 된다.
           isNull(notifications.readAt),

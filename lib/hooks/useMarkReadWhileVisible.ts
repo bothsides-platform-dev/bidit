@@ -94,6 +94,10 @@ export function useMarkReadWhileVisible({
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
+      // 게이트는 예약 시점이 아니라 **실행 시점**에 판정한다. 디바운스가 도는 사이
+      // 탭을 가리거나 위로 스크롤했다면 사용자는 그 메시지를 본 게 아니다. 여기서
+      // 놓친 표시까지 지우면 가려진 채 도착한 메시지도 함께 읽음이 된다 — 막히면
+      // 놓친 요청으로 남겨 두고, 게이트가 풀릴 때 한 번 만회한다.
       if (!canMarkRead()) {
         missedRef.current = true;
         return;

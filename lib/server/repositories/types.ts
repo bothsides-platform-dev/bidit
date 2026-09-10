@@ -1179,6 +1179,10 @@ export interface NotificationRepo {
     userId: string,
     workspaceId: string,
     threadLinkUrl: string,
+    /**
+     * 정리 상한 — 방금 저장한 읽음 cursor. 이 시각 이후에 만들어진 알림은
+     * 사용자가 본 적 없는 메시지의 것이므로 남긴다.
+     */
     readThrough: Date,
     tx?: Tx,
   ): Promise<void>;
