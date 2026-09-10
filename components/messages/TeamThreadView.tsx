@@ -89,25 +89,29 @@ export function TeamThreadView({ rfpId, workspaceId, viewerUserId, viewerAvatarU
   // 마운트 1회였을 때는 켜 둔 채 동료 메시지를 받으면 배지가 남았다.
   const markRead = useThreadReadTracking({
     threadKey: rfpId,
+    initialBoundary: localMessages.at(-1),
     listRef,
     bottomRef,
-    run: (id) => {
-      // ThreadView 와 같은 이유 — 스토어를 로컬에서도 내려야 배지가 꺼진다.
-      markThreadReadLocal(teamThreadLink(id));
-      void markTeamThreadReadAction({ rfpId: id });
+    run: (id, throughMessageId) => {
+      void markTeamThreadReadAction({ rfpId: id, throughMessageId })
+        .then((result) => {
+          if (result.ok) {
+            markThreadReadLocal(teamThreadLink(id), result.readAt);
+          }
+        })
+        .catch(() => undefined);
     },
   });
 
-  // 이 스레드를 보고 있는 동안에는 같은 스레드의 알림 토스트를 띄우지 않는다.
-  useOpenThreadRegistration(teamThreadLink(rfpId));
-
-  useTeamChannel(rfpId, workspaceId, {
+  const { connected } = useTeamChannel(rfpId, workspaceId, {
     onMessage: (data: TeamLivePayload) => {
       if (!data.id || typeof data.body !== 'string' || !data.createdAt) return;
       const id = data.id;
       const isSelf = data.authorUserId === viewerUserId;
       // 내 echo 로는 읽음을 갱신하지 않는다 — 동료가 쓴 것만 "봤다"의 대상이다.
-      if (!isSelf) markRead();
+      if (!isSelf) {
+        markRead({ id, createdAt: data.createdAt as string });
+      }
       // 재전달·승격 선행 케이스는 dedup. 본인 echo 면 tempId 로 정확 매칭 후
       // 확정 승격(append 하면 중복, 낙관적 첨부 보존), 아니면 새로 append.
       setLocalMessages(
@@ -128,6 +132,9 @@ export function TeamThreadView({ rfpId, workspaceId, viewerUserId, viewerAvatarU
       );
     },
   });
+
+  // 라이브 말풍선을 실제로 받을 수 있을 때만 중복 토스트를 억제한다.
+  useOpenThreadRegistration(teamThreadLink(rfpId), connected === true);
 
   async function handleSend(): Promise<void> {
     if (sending) return;

@@ -7,7 +7,10 @@ import { conversationThreadLink } from '@/lib/chat/thread-link';
 import { getNotificationRepo } from '@/lib/server/repositories/factory';
 import { type ChatActionResult, requireActiveWorkspace } from './_shared';
 
-const Input = z.object({ conversationId: z.string().uuid() }).strict();
+const Input = z.object({
+  conversationId: z.string().uuid(),
+  throughMessageId: z.string().uuid(),
+}).strict();
 
 export type MarkConversationReadInput = z.infer<typeof Input>;
 export type MarkConversationReadResult = ChatActionResult<{ readAt: string }>;
@@ -23,6 +26,7 @@ export async function markConversationReadAction(
 
   const result = await (await getConversationReadState()).markRead({
     conversationId: parsed.data.conversationId,
+    throughMessageId: parsed.data.throughMessageId,
     viewer: { userId: ws.userId, activeWorkspaceId: ws.workspaceId },
   });
   if (!result.ok) return result;
@@ -40,6 +44,7 @@ export async function markConversationReadAction(
       ws.userId,
       ws.workspaceId,
       conversationThreadLink(parsed.data.conversationId),
+      new Date(result.readAt),
     );
   } catch (error) {
     console.warn('[chat] failed to clear in-app notifications for conversation', error);

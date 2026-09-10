@@ -1179,6 +1179,7 @@ export interface NotificationRepo {
     userId: string,
     workspaceId: string,
     threadLinkUrl: string,
+    readThrough: Date,
     tx?: Tx,
   ): Promise<void>;
   /** 동일 window 내 pending team_chat 인앱 알림 존재 여부(rfp 단위 dedupe). */
@@ -1504,6 +1505,11 @@ export interface ChatMessageRepo {
     messageId: string,
     tx?: Tx,
   ): Promise<{ conversationId: string } | undefined>;
+  /** 읽음 cursor 상한 검증용 — 메시지의 대화와 서버 생성 시각. */
+  findReadBoundary(
+    messageId: string,
+    tx?: Tx,
+  ): Promise<{ conversationId: string; createdAt: Date } | undefined>;
   /**
    * 한 대화의 모든 메시지 + 작성자 이름·이메일(users 조인) — created_at asc.
    * 스레드 로더 전용. 인박스 목록 로더는 가벼운 listByConversation 을 쓴다.
@@ -1562,6 +1568,11 @@ export interface RfpTeamMessageRepo {
     messageId: string,
     tx?: Tx,
   ): Promise<{ workspaceId: string } | undefined>;
+  /** 읽음 cursor 상한 검증용 — 팀 스레드 scope와 서버 생성 시각. */
+  findReadBoundary(
+    messageId: string,
+    tx?: Tx,
+  ): Promise<{ rfpId: string; workspaceId: string; createdAt: Date } | undefined>;
 }
 
 // ── Chat: Message Template ────────────────────────────────────────────

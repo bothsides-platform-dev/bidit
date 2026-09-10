@@ -197,6 +197,7 @@ export class TeamChatService {
                 type: 'team_chat.mention',
                 title: `${authorName}님이 회원님을 언급했어요`,
                 body: preview,
+                createdAt,
                 linkUrl: teamThreadLink(input.rfpId),
               })),
             );
@@ -210,6 +211,7 @@ export class TeamChatService {
                 type: 'team_chat.message',
                 title: `${authorName}님의 팀 메시지`,
                 body: preview,
+                createdAt,
                 linkUrl: teamThreadLink(input.rfpId),
               })),
             );
@@ -292,10 +294,22 @@ export class TeamChatService {
     return { ok: true, members };
   }
 
-  async markRead(rfpId: string, actor: TeamChatActor): Promise<ServiceResult<{ readAt: string }>> {
+  async markRead(
+    rfpId: string,
+    actor: TeamChatActor,
+    throughMessageId: string,
+  ): Promise<ServiceResult<{ readAt: string }>> {
     const auth = await this.authorize(rfpId, actor);
     if (!auth.ok) return auth;
-    const at = new Date();
+    const boundary = await this.msgRepo.findReadBoundary(throughMessageId);
+    if (
+      !boundary ||
+      boundary.rfpId !== rfpId ||
+      boundary.workspaceId !== actor.workspaceId
+    ) {
+      return { ok: false, error: 'INVALID_READ_BOUNDARY' };
+    }
+    const at = new Date(Math.min(boundary.createdAt.getTime(), Date.now()));
     await this.readRepo.upsert(rfpId, actor.workspaceId, actor.userId, at);
     return { ok: true, readAt: at.toISOString() };
   }

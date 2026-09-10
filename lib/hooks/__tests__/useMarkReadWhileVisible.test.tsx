@@ -130,6 +130,28 @@ describe('useMarkReadWhileVisible', () => {
     expect(run).not.toHaveBeenCalled();
   });
 
+  it('does NOT mark read when the tab becomes hidden during the debounce', () => {
+    const run = vi.fn();
+    const { result } = renderHook(() =>
+      useMarkReadWhileVisible({ key: 'conv-1', run }),
+    );
+    run.mockClear();
+
+    act(() => {
+      result.current.markRead();
+      setVisibility('hidden');
+      vi.runAllTimers();
+    });
+
+    expect(run).not.toHaveBeenCalled();
+
+    act(() => {
+      setVisibility('visible');
+    });
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledWith('conv-1');
+  });
+
   it('catches up once when the tab becomes visible again', () => {
     const run = vi.fn();
     const { result } = renderHook(() => useMarkReadWhileVisible({ key: 'conv-1', run }));

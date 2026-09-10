@@ -140,7 +140,10 @@ beforeEach(() => {
   sendChatMessageAction.mockReset();
   sendChatMessageAction.mockResolvedValue({ ok: true, conversationId: 'conv-1', messageId: 'm-new' });
   markConversationReadAction.mockReset();
-  markConversationReadAction.mockResolvedValue({ ok: true });
+  markConversationReadAction.mockResolvedValue({
+    ok: true,
+    readAt: '2026-05-27T05:00:00.000Z',
+  });
   sendTyping.mockReset();
   uploadAttachment.mockReset();
   toast.mockReset();
@@ -226,7 +229,10 @@ describe('ThreadView', () => {
   it('마운트 시 markConversationReadAction 을 conversationId 로 1회 호출한다(읽음 처리)', async () => {
     render(base());
     await waitFor(() => {
-      expect(markConversationReadAction).toHaveBeenCalledWith({ conversationId: 'conv-1' });
+      expect(markConversationReadAction).toHaveBeenCalledWith({
+        conversationId: 'conv-1',
+        throughMessageId: 'm2',
+      });
     });
     expect(markConversationReadAction).toHaveBeenCalledTimes(1);
   });
@@ -247,7 +253,20 @@ describe('ThreadView', () => {
     });
 
     await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(2));
-    expect(markConversationReadAction).toHaveBeenLastCalledWith({ conversationId: 'conv-1' });
+    expect(markConversationReadAction).toHaveBeenLastCalledWith({
+      conversationId: 'conv-1',
+      throughMessageId: 'live-read-1',
+    });
+  });
+
+  it('읽음 서버 처리가 실패하면 알림 배지를 로컬에서 먼저 내리지 않는다', async () => {
+    markConversationReadAction.mockResolvedValue({ ok: false, error: 'FORBIDDEN' });
+    markThreadReadLocal.mockClear();
+
+    render(base());
+
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(1));
+    expect(markThreadReadLocal).not.toHaveBeenCalled();
   });
 
   it('위로 스크롤해 최신 메시지가 화면에 없으면 읽음 처리하지 않는다', async () => {
@@ -295,7 +314,10 @@ describe('ThreadView', () => {
     act(() => scrollBackToBottom());
 
     await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(2));
-    expect(markConversationReadAction).toHaveBeenLastCalledWith({ conversationId: 'conv-1' });
+    expect(markConversationReadAction).toHaveBeenLastCalledWith({
+      conversationId: 'conv-1',
+      throughMessageId: 'live-catchup',
+    });
   });
 
   it('탭이 숨겨져 있으면 도착한 메시지로 읽음 처리하지 않는다(거짓 읽음 영수증 방지)', async () => {
@@ -356,15 +378,26 @@ describe('ThreadView', () => {
     render(base());
 
     await waitFor(() =>
-      expect(markThreadReadLocal).toHaveBeenCalledWith('/messages?c=conv-1'),
+      expect(markThreadReadLocal).toHaveBeenCalledWith(
+        '/messages?c=conv-1',
+        '2026-05-27T05:00:00.000Z',
+      ),
     );
   });
 
   it('열려 있는 동안 그 대화를 열린 스레드로 등록한다(토스트 억제 근거)', () => {
+    channelResult = { typingUserIds: [], sendTyping, connected: true };
     const { unmount } = render(base());
     expect(isThreadOpen('/messages?c=conv-1')).toBe(true);
 
     unmount();
+    expect(isThreadOpen('/messages?c=conv-1')).toBe(false);
+  });
+
+  it('실시간 메시지를 받을 수 없으면 열린 스레드로 등록하지 않는다', () => {
+    channelResult = { typingUserIds: [], sendTyping, connected: false };
+    render(base());
+
     expect(isThreadOpen('/messages?c=conv-1')).toBe(false);
   });
 
@@ -1535,9 +1568,13 @@ describe('variant=tabs', () => {
 
   it('RFP 탭 클릭 시 ContextPanel을 렌더하고 컴포저를 숨긴다', async () => {
     const user = userEvent.setup();
+    channelResult = { typingUserIds: [], sendTyping, connected: true };
     render(<ThreadView {...baseProps} />);
+    expect(isThreadOpen('/messages?c=conv-1')).toBe(true);
+
     await user.click(screen.getByRole('tab', { name: 'RFP' }));
     expect(screen.getByTestId('context-panel')).toBeInTheDocument();
+    expect(isThreadOpen('/messages?c=conv-1')).toBe(false);
     const composer = screen.queryByPlaceholderText('메시지를 입력하세요…')
       ?? screen.queryByRole('textbox');
     expect(composer).not.toBeInTheDocument();

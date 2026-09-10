@@ -5,6 +5,7 @@ import {
   __resetForTest,
   __useDrizzleWithDbForTest,
   getChatConversationRepo,
+  getChatMessageRepo,
   getChatReadRepo,
 } from '@/lib/server/repositories/factory';
 import {
@@ -48,13 +49,33 @@ async function seedConversation() {
   return { buyerUser, buyerWorkspace, pgWorkspace, conversation };
 }
 
+async function seedReadBoundary(
+  scene: Awaited<ReturnType<typeof seedConversation>>,
+  createdAt = new Date('2026-09-05T12:34:56.000Z'),
+): Promise<string> {
+  const id = '00000000-0000-4000-8000-000000000098';
+  await (await getChatMessageRepo()).save({
+    id,
+    conversationId: scene.conversation.id,
+    authorUserId: scene.buyerUser.id,
+    authorWsId: scene.buyerWorkspace.id,
+    body: '읽음 상한',
+    rfpId: null,
+    createdAt,
+  });
+  return id;
+}
+
 describe('Conversation read state — markRead', () => {
   it('active workspace의 cursor를 저장한 뒤 그 watermark를 전달한다', async () => {
-    const { buyerUser, buyerWorkspace, conversation } = await seedConversation();
+    const scene = await seedConversation();
+    const { buyerUser, buyerWorkspace, conversation } = scene;
+    const throughMessageId = await seedReadBoundary(scene);
     const readState = await getConversationReadState();
 
     const result = await readState.markRead({
       conversationId: conversation.id,
+      throughMessageId,
       viewer: {
         userId: buyerUser.id,
         activeWorkspaceId: buyerWorkspace.id,
@@ -74,11 +95,44 @@ describe('Conversation read state — markRead', () => {
     });
   });
 
+  it('화면에 실제로 도착한 메시지 시각까지만 cursor를 전진시킨다', async () => {
+    const { buyerUser, buyerWorkspace, conversation } = await seedConversation();
+    const messageId = '00000000-0000-4000-8000-000000000099';
+    const visibleAt = new Date('2026-09-05T12:00:00.000Z');
+    await (await getChatMessageRepo()).save({
+      id: messageId,
+      conversationId: conversation.id,
+      authorUserId: buyerUser.id,
+      authorWsId: buyerWorkspace.id,
+      body: '화면에 도착한 메시지',
+      rfpId: null,
+      createdAt: visibleAt,
+    });
+
+    const result = await (await getConversationReadState()).markRead({
+      conversationId: conversation.id,
+      throughMessageId: messageId,
+      viewer: {
+        userId: buyerUser.id,
+        activeWorkspaceId: buyerWorkspace.id,
+      },
+    });
+
+    expect(result).toEqual({ ok: true, readAt: visibleAt.toISOString() });
+    const stored = await (await getChatReadRepo()).getFor(
+      conversation.id,
+      buyerWorkspace.id,
+      buyerUser.id,
+    );
+    expect(stored?.lastReadAt.toISOString()).toBe(visibleAt.toISOString());
+  });
+
   it('존재하지 않는 대화는 CONVERSATION_NOT_FOUND로 거부한다', async () => {
     const readState = await getConversationReadState();
 
     const result = await readState.markRead({
       conversationId: '00000000-0000-0000-0000-000000000000',
+      throughMessageId: '00000000-0000-4000-8000-000000000097',
       viewer: {
         userId: '00000000-0000-0000-0000-000000000001',
         activeWorkspaceId: '00000000-0000-0000-0000-000000000002',
@@ -98,6 +152,7 @@ describe('Conversation read state — markRead', () => {
 
     const result = await readState.markRead({
       conversationId: conversation.id,
+      throughMessageId: '00000000-0000-4000-8000-000000000097',
       viewer: {
         userId: outsider.id,
         activeWorkspaceId: otherWorkspace.id,
@@ -109,7 +164,9 @@ describe('Conversation read state — markRead', () => {
   });
 
   it('늦게 도착한 오래된 요청은 저장된 최신 watermark를 반환하고 전달한다', async () => {
-    const { buyerUser, buyerWorkspace, conversation } = await seedConversation();
+    const scene = await seedConversation();
+    const { buyerUser, buyerWorkspace, conversation } = scene;
+    const throughMessageId = await seedReadBoundary(scene);
     const later = new Date('2026-09-05T15:00:00.000Z');
     await (
       await getChatReadRepo()
@@ -118,6 +175,7 @@ describe('Conversation read state — markRead', () => {
 
     const result = await readState.markRead({
       conversationId: conversation.id,
+      throughMessageId,
       viewer: {
         userId: buyerUser.id,
         activeWorkspaceId: buyerWorkspace.id,
@@ -132,13 +190,16 @@ describe('Conversation read state — markRead', () => {
   });
 
   it('Centrifugo 전달 실패 뒤에도 저장 결과를 성공으로 반환한다', async () => {
-    const { buyerUser, buyerWorkspace, conversation } = await seedConversation();
+    const scene = await seedConversation();
+    const { buyerUser, buyerWorkspace, conversation } = scene;
+    const throughMessageId = await seedReadBoundary(scene);
     publishChatEvent.mockRejectedValueOnce(new Error('CENTRIFUGO_DOWN'));
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
     const readState = await getConversationReadState();
 
     const result = await readState.markRead({
       conversationId: conversation.id,
+      throughMessageId,
       viewer: {
         userId: buyerUser.id,
         activeWorkspaceId: buyerWorkspace.id,
@@ -157,7 +218,9 @@ describe('Conversation read state — markRead', () => {
   });
 
   it('cursor 저장이 실패하면 읽음 이벤트를 먼저 전달하지 않는다', async () => {
-    const { buyerUser, buyerWorkspace, conversation } = await seedConversation();
+    const scene = await seedConversation();
+    const { buyerUser, buyerWorkspace, conversation } = scene;
+    const throughMessageId = await seedReadBoundary(scene);
     const readRepo = await getChatReadRepo();
     vi.spyOn(readRepo, 'upsert').mockRejectedValueOnce(new Error('DB_DOWN'));
     const readState = await getConversationReadState();
@@ -165,6 +228,7 @@ describe('Conversation read state — markRead', () => {
     await expect(
       readState.markRead({
         conversationId: conversation.id,
+        throughMessageId,
         viewer: {
           userId: buyerUser.id,
           activeWorkspaceId: buyerWorkspace.id,

@@ -47,6 +47,7 @@ describe('markConversationReadAction', () => {
   it('인증된 viewer를 Conversation read state module에 위임한다', async () => {
     const result = await markConversationReadAction({
       conversationId: '00000000-0000-4000-8000-000000000001',
+      throughMessageId: '00000000-0000-4000-8000-000000000002',
     });
 
     expect(result).toEqual({
@@ -55,6 +56,7 @@ describe('markConversationReadAction', () => {
     });
     expect(markRead).toHaveBeenCalledWith({
       conversationId: '00000000-0000-4000-8000-000000000001',
+      throughMessageId: '00000000-0000-4000-8000-000000000002',
       viewer: { userId: 'user-1', activeWorkspaceId: 'workspace-1' },
     });
     expect(publishChatEvent).not.toHaveBeenCalled();
@@ -63,12 +65,14 @@ describe('markConversationReadAction', () => {
   it('그 대화의 대기 중 인앱 알림도 함께 읽음 처리한다', async () => {
     await markConversationReadAction({
       conversationId: '00000000-0000-4000-8000-000000000001',
+      throughMessageId: '00000000-0000-4000-8000-000000000002',
     });
 
     expect(markChatThreadRead).toHaveBeenCalledWith(
       'user-1',
       'workspace-1',
       '/messages?c=00000000-0000-4000-8000-000000000001',
+      new Date('2026-09-05T12:00:00.000Z'),
     );
   });
 
@@ -77,6 +81,7 @@ describe('markConversationReadAction', () => {
 
     const result = await markConversationReadAction({
       conversationId: '00000000-0000-4000-8000-000000000001',
+      throughMessageId: '00000000-0000-4000-8000-000000000002',
     });
 
     expect(result).toEqual({ ok: false, error: 'FORBIDDEN' });
@@ -90,6 +95,7 @@ describe('markConversationReadAction', () => {
 
     const result = await markConversationReadAction({
       conversationId: '00000000-0000-4000-8000-000000000001',
+      throughMessageId: '00000000-0000-4000-8000-000000000002',
     });
 
     expect(result).toEqual({ ok: true, readAt: '2026-09-05T12:00:00.000Z' });
@@ -119,6 +125,7 @@ describe('markConversationReadAction', () => {
 
     const result = await markConversationReadAction({
       conversationId: '00000000-0000-4000-8000-000000000001',
+      throughMessageId: '00000000-0000-4000-8000-000000000002',
     });
 
     expect(result).toEqual({ ok: false, error: 'UNAUTHENTICATED' });

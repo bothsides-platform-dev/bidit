@@ -188,19 +188,19 @@ export function ThreadView({
   // 배지도 읽음 영수증도 그대로였다(VoC).
   const markRead = useThreadReadTracking({
     threadKey: conversationId,
+    initialBoundary: localMessages.at(-1),
     listRef,
     bottomRef,
-    run: (id) => {
-      // 서버가 같은 행을 곧바로 지우지만, 스토어는 마운트 1회만 hydrate 하므로
-      // 로컬에서도 내려야 사이드바 배지가 새로고침 전에 꺼진다.
-      markThreadReadLocal(conversationThreadLink(id));
-      void markConversationReadAction({ conversationId: id });
+    run: (id, throughMessageId) => {
+      void markConversationReadAction({ conversationId: id, throughMessageId })
+        .then((result) => {
+          if (result.ok) {
+            markThreadReadLocal(conversationThreadLink(id), result.readAt);
+          }
+        })
+        .catch(() => undefined);
     },
   });
-
-  // 이 대화를 보고 있는 동안에는 같은 대화의 알림 토스트를 띄우지 않는다 —
-  // 메시지는 이미 눈앞에 말풍선으로 도착한다(VoC "대화에 사용자가 있는데도 알림").
-  useOpenThreadRegistration(conversationThreadLink(conversationId));
 
   // Live channel — graceful no-op when realtime is unconfigured (dev/tests):
   // typingUserIds empty, onMessage/onRead never fire, and the thread runs
@@ -212,7 +212,9 @@ export function ThreadView({
       const sender: ThreadMessage['sender'] =
         data.authorWsId === counterparty.workspaceId ? 'other' : 'self';
       // 내 echo 로는 읽음을 갱신하지 않는다 — 상대가 보낸 것만 "봤다"의 대상이다.
-      if (sender === 'other') markRead();
+      if (sender === 'other') {
+        markRead({ id, createdAt: data.createdAt as string });
+      }
       // Centrifugo recovery can redeliver, and handleSend may have already
       // promoted the pending bubble to this id → dedup. 본인 echo 면 tempId 로
       // 정확 매칭 후 확정 승격(append 하면 중복), 아니면 새로 append.
@@ -238,6 +240,13 @@ export function ThreadView({
     },
     onRead: readReceipt.accept,
   });
+
+  // 실제 채팅 탭이 보이고 라이브 말풍선을 받을 수 있을 때만 토스트를 억제한다.
+  // 다른 탭이나 연결 끊김 상태에서는 SSE 알림이 유일한 즉시 신호일 수 있다.
+  useOpenThreadRegistration(
+    conversationThreadLink(conversationId),
+    connected === true && (variant !== 'tabs' || activeTab === 'chat'),
+  );
 
   const totalAttachmentCount = useMemo(
     () => localMessages.reduce((sum, m) => sum + m.attachments.length, 0),

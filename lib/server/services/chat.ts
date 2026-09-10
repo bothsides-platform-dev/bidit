@@ -238,6 +238,7 @@ export class ChatService {
             type: 'chat.message',
             title: `${senderName}님의 새 메시지`,
             body: preview,
+            createdAt: now,
             linkUrl: threadLinkUrl,
             email: {
               event: 'chat.message',

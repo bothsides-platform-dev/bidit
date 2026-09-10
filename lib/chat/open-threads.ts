@@ -33,9 +33,15 @@ export function registerOpenThread(threadLinkUrl: string): () => void {
   };
 }
 
-/** 마운트되어 있는 동안 그 스레드를 '열림'으로 유지한다. */
-export function useOpenThreadRegistration(threadLinkUrl: string): void {
-  useEffect(() => registerOpenThread(threadLinkUrl), [threadLinkUrl]);
+/** 실제 메시지 화면을 보고 있는 동안 그 스레드를 '열림'으로 유지한다. */
+export function useOpenThreadRegistration(
+  threadLinkUrl: string,
+  enabled = true,
+): void {
+  useEffect(() => {
+    if (!enabled) return;
+    return registerOpenThread(threadLinkUrl);
+  }, [threadLinkUrl, enabled]);
 }
 
 /** 그 링크의 스레드가 지금 열려 있는가. 모르는 링크는 `false`(= 토스트한다). */

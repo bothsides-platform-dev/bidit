@@ -126,7 +126,10 @@ describe('listConversationsForViewer', () => {
     if (!sent.ok) return;
 
     asBuyer(buyerUser, buyerWs.id);
-    await markConversationReadAction({ conversationId: sent.conversationId });
+    await markConversationReadAction({
+      conversationId: sent.conversationId,
+      throughMessageId: sent.messageId,
+    });
     const list = await listConversationsForViewer();
     expect(list[0].unread).toBe(false);
   });
@@ -420,7 +423,10 @@ describe('loadConversationThread', () => {
     if (!sent.ok) return;
 
     asPg(pgUser, pgWs.id);
-    await markConversationReadAction({ conversationId: sent.conversationId });
+    await markConversationReadAction({
+      conversationId: sent.conversationId,
+      throughMessageId: sent.messageId,
+    });
 
     asBuyer(buyerUser, buyerWs.id);
     const thread = await loadConversationThread(sent.conversationId);
@@ -461,7 +467,10 @@ describe('loadConversationThread', () => {
     if (!sent.ok) return;
 
     asBuyer(buyerUser, buyerWs.id);
-    await markConversationReadAction({ conversationId: sent.conversationId });
+    await markConversationReadAction({
+      conversationId: sent.conversationId,
+      throughMessageId: sent.messageId,
+    });
     const thread = await loadConversationThread(sent.conversationId);
     expect(thread.ok).toBe(true);
     if (!thread.ok) return;
@@ -612,7 +621,10 @@ describe('loadConversationThread', () => {
 
     // The OTHER buyer member reads — but the PG side never has.
     asBuyer(buyerUser2, buyerWs.id);
-    await markConversationReadAction({ conversationId: sent.conversationId });
+    await markConversationReadAction({
+      conversationId: sent.conversationId,
+      throughMessageId: sent.messageId,
+    });
 
     asBuyer(buyerUser, buyerWs.id);
     const thread = await loadConversationThread(sent.conversationId);
@@ -639,7 +651,10 @@ describe('loadConversationThread', () => {
     if (!sent.ok) return;
 
     asBuyer(dualMember, buyerWs.id);
-    await markConversationReadAction({ conversationId: sent.conversationId });
+    await markConversationReadAction({
+      conversationId: sent.conversationId,
+      throughMessageId: sent.messageId,
+    });
 
     asBuyer(buyerUser, buyerWs.id);
     const beforeCounterpartyRead = await loadConversationThread(sent.conversationId);
@@ -648,7 +663,10 @@ describe('loadConversationThread', () => {
     expect(beforeCounterpartyRead.messages[0].readByCounterparty).toBe(false);
 
     asPg(dualMember, pgWs.id);
-    await markConversationReadAction({ conversationId: sent.conversationId });
+    await markConversationReadAction({
+      conversationId: sent.conversationId,
+      throughMessageId: sent.messageId,
+    });
 
     asBuyer(buyerUser, buyerWs.id);
     const afterCounterpartyRead = await loadConversationThread(sent.conversationId);

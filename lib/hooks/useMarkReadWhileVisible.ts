@@ -94,6 +94,10 @@ export function useMarkReadWhileVisible({
     if (timerRef.current) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => {
       timerRef.current = null;
+      if (!canMarkRead()) {
+        missedRef.current = true;
+        return;
+      }
       missedRef.current = false;
       runRef.current(keyRef.current);
     }, MARK_READ_DEBOUNCE_MS);

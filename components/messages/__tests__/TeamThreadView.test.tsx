@@ -105,6 +105,10 @@ beforeEach(() => {
   channelOptions = {};
   channelResult = { connected: null };
   vi.mocked(markTeamThreadReadAction).mockClear();
+  vi.mocked(markTeamThreadReadAction).mockResolvedValue({
+    ok: true,
+    readAt: '2026-06-10T07:00:00.000Z',
+  });
   intersectionObservers.length = 0;
 });
 
@@ -191,8 +195,11 @@ describe('TeamThreadView — 렌더', () => {
   });
 
   it('마운트 시 팀 스레드를 읽음 처리한다', () => {
-    render(<TeamThreadView rfpId="r1" workspaceId="w1" viewerUserId="u1" viewerAvatarUpdatedAt={null} messages={[]} />);
-    expect(markTeamThreadReadAction).toHaveBeenCalledWith({ rfpId: 'r1' });
+    render(base());
+    expect(markTeamThreadReadAction).toHaveBeenCalledWith({
+      rfpId: 'rfp-1',
+      throughMessageId: 'tm2',
+    });
   });
 
   it('열려 있는 동안 동료 메시지가 오면 다시 읽음 처리한다', async () => {
@@ -211,6 +218,10 @@ describe('TeamThreadView — 렌더', () => {
     );
 
     await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(2));
+    expect(markTeamThreadReadAction).toHaveBeenLastCalledWith({
+      rfpId: 'rfp-1',
+      throughMessageId: 'tm-live-read',
+    });
   });
 
   it('위로 스크롤해 최신 메시지가 화면에 없으면 읽음 처리하지 않는다', async () => {
@@ -314,15 +325,36 @@ describe('TeamThreadView — 렌더', () => {
     render(base());
 
     await waitFor(() =>
-      expect(markThreadReadLocal).toHaveBeenCalledWith('/messages?t=rfp-1'),
+      expect(markThreadReadLocal).toHaveBeenCalledWith(
+        '/messages?t=rfp-1',
+        '2026-06-10T07:00:00.000Z',
+      ),
     );
   });
 
+  it('읽음 서버 처리가 실패하면 알림 배지를 로컬에서 먼저 내리지 않는다', async () => {
+    vi.mocked(markTeamThreadReadAction).mockResolvedValue({ ok: false, error: 'FORBIDDEN' });
+    markThreadReadLocal.mockClear();
+
+    render(base());
+
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1));
+    expect(markThreadReadLocal).not.toHaveBeenCalled();
+  });
+
   it('열려 있는 동안 그 팀 스레드를 열린 스레드로 등록한다(토스트 억제 근거)', () => {
+    channelResult = { connected: true };
     const { unmount } = render(base());
     expect(isThreadOpen('/messages?t=rfp-1')).toBe(true);
 
     unmount();
+    expect(isThreadOpen('/messages?t=rfp-1')).toBe(false);
+  });
+
+  it('실시간 메시지를 받을 수 없으면 열린 팀 스레드로 등록하지 않는다', () => {
+    channelResult = { connected: false };
+    render(base());
+
     expect(isThreadOpen('/messages?t=rfp-1')).toBe(false);
   });
 

@@ -34,16 +34,34 @@ type NotifStore = {
   markAllReadLocal: () => void;
 };
 
+// 읽음 직후 history/SSE가 늦게 도착해 예전 pending 스냅샷을 되살리지 않도록
+// 스레드별 로컬 상한을 둔다. 서버의 markChatThreadRead(readThrough)와 같은 경계다.
+const threadReadWatermarks = new Map<string, number>();
+
+function applyThreadReadWatermark(notification: Notification): Notification {
+  if (!notification.linkUrl || !canMarkRead(notification)) return notification;
+  const watermark = threadReadWatermarks.get(notification.linkUrl);
+  const createdAt = Date.parse(notification.createdAt);
+  if (watermark === undefined || !Number.isFinite(createdAt) || createdAt > watermark) {
+    return notification;
+  }
+  return {
+    ...notification,
+    status: 'read',
+    readAt: new Date(watermark).toISOString(),
+  };
+}
+
 const useStore = create<NotifStore>((set) => ({
   notifications: [],
   status: 'idle',
-  setAll: (list) => set({ notifications: list }),
+  setAll: (list) => set({ notifications: list.map(applyThreadReadWatermark) }),
   prepend: (n) =>
     set((s) => ({
       // dedupe — 동일 id가 이미 있으면 무시(서버 재구독 race 등).
       notifications: s.notifications.some((x) => x.id === n.id)
         ? s.notifications
-        : [n, ...s.notifications],
+        : [applyThreadReadWatermark(n), ...s.notifications],
     })),
   setStatus: (status) => set({ status }),
   patchOne: (id, patch) =>
@@ -75,8 +93,17 @@ export const useNotificationStoreForTest = useStore;
  *
  * 낙관적이어도 안전하다 — 서버가 곧바로 같은 행을 같은 기준으로 쓴다.
  */
-export function markThreadReadLocal(threadLinkUrl: string): void {
-  const readAt = new Date().toISOString();
+export function markThreadReadLocal(
+  threadLinkUrl: string,
+  serverReadAt: string,
+): void {
+  const readThrough = Date.parse(serverReadAt);
+  if (!Number.isFinite(readThrough)) return;
+  threadReadWatermarks.set(
+    threadLinkUrl,
+    Math.max(threadReadWatermarks.get(threadLinkUrl) ?? 0, readThrough),
+  );
+  const readAt = new Date(readThrough).toISOString();
   useStore.setState((s) => ({
     notifications: s.notifications.map((n) =>
       n.linkUrl === threadLinkUrl && canMarkRead(n)
@@ -255,6 +282,7 @@ function resetForWorkspace(workspaceId: string | undefined): void {
     historyLoaded = false;
     return;
   }
+  threadReadWatermarks.clear();
   if (eventSource) {
     eventSource.close();
     eventSource = null;

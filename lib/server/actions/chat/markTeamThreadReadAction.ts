@@ -5,7 +5,10 @@ import { getNotificationRepo } from '@/lib/server/repositories/factory';
 import { getTeamChatService } from '@/lib/server/services/team-chat';
 import { type ChatActionResult, requireActiveWorkspace } from './_shared';
 
-const Input = z.object({ rfpId: z.string().uuid() }).strict();
+const Input = z.object({
+  rfpId: z.string().uuid(),
+  throughMessageId: z.string().uuid(),
+}).strict();
 export type MarkTeamThreadReadResult = ChatActionResult<{ readAt: string }>;
 
 export async function markTeamThreadReadAction(
@@ -16,9 +19,13 @@ export async function markTeamThreadReadAction(
   const ws = await requireActiveWorkspace();
   if (!ws.ok) return ws;
   const service = await getTeamChatService();
-  const result = await service.markRead(parsed.data.rfpId, {
-    userId: ws.userId, workspaceId: ws.workspaceId, workspaceType: ws.workspaceType,
-  });
+  const result = await service.markRead(
+    parsed.data.rfpId,
+    {
+      userId: ws.userId, workspaceId: ws.workspaceId, workspaceType: ws.workspaceType,
+    },
+    parsed.data.throughMessageId,
+  );
   if (!result.ok) return result;
 
   // 1:1 대화와 같은 이유로 best-effort — markConversationReadAction 의 주석 참조.
@@ -30,6 +37,7 @@ export async function markTeamThreadReadAction(
       ws.userId,
       ws.workspaceId,
       teamThreadLink(parsed.data.rfpId),
+      new Date(result.readAt),
     );
   } catch (error) {
     console.warn('[team-chat] failed to clear in-app notifications for thread', error);

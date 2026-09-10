@@ -157,6 +157,7 @@ describe('inboxLoader', () => {
       };
       const r = await sendTeamMessageAction({ rfpId: rfp.id, body: '동료 메시지' });
       expect(r.ok).toBe(true);
+      if (!r.ok) throw new Error('expected team message to be sent');
 
       // Now switch to buyer user — the thread is unread (teammate sent it)
       sessionRef.value = {
@@ -164,7 +165,10 @@ describe('inboxLoader', () => {
       };
 
       // Mark read
-      const markResult = await markTeamThreadReadAction({ rfpId: rfp.id });
+      const markResult = await markTeamThreadReadAction({
+        rfpId: rfp.id,
+        throughMessageId: r.messageId,
+      });
       expect(markResult).toMatchObject({ ok: true });
 
       // After mark, listInboxForViewer's team item should have unread=false
@@ -182,14 +186,20 @@ describe('inboxLoader', () => {
         user: { id: buyerUser.id, email: buyerUser.email, workspaceId: buyerWs.id, workspaceType: 'buyer' },
       };
 
-      const r = await markTeamThreadReadAction({ rfpId: 'not-a-uuid' });
+      const r = await markTeamThreadReadAction({
+        rfpId: 'not-a-uuid',
+        throughMessageId: crypto.randomUUID(),
+      });
       expect(r).toEqual({ ok: false, error: 'INVALID_INPUT' });
     });
 
     it('returns UNAUTHENTICATED without a session', async () => {
       const { randomUUID } = await import('node:crypto');
       sessionRef.value = null;
-      const r = await markTeamThreadReadAction({ rfpId: randomUUID() });
+      const r = await markTeamThreadReadAction({
+        rfpId: randomUUID(),
+        throughMessageId: randomUUID(),
+      });
       expect(r).toEqual({ ok: false, error: 'UNAUTHENTICATED' });
     });
   });

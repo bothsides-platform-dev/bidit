@@ -46,6 +46,8 @@ export type NotifyInput = {
   type: string;
   title: string;
   body: string;
+  /** 사건의 서버 권위 시각. 생략하면 알림 생성 시각을 쓴다. */
+  createdAt?: Date;
   /**
    * 문자열이면 전원 동일. 함수면 수신자별로 파생한다 — 같은 사건이라도 링크가
    * 역할별로 갈리는 경우(구매사 `/rfp/{code}` vs PG `/inbox/{code}`)를 위해서다.
@@ -98,7 +100,7 @@ export async function notify(tx: Tx, input: NotifyInput): Promise<Notification[]
         channel: 'inapp',
         status: 'pending',
         ...(link ? { linkUrl: link } : {}),
-        createdAt: new Date().toISOString(),
+        createdAt: (input.createdAt ?? new Date()).toISOString(),
       });
     }
     await dispatchNotifications(tx, created);

@@ -52,6 +52,7 @@ function chatNotification(overrides: {
 
 const CONV_A = '/messages?c=11111111-1111-4111-8111-111111111111';
 const CONV_B = '/messages?c=22222222-2222-4222-8222-222222222222';
+const READ_THROUGH = new Date('2100-01-01T00:00:00.000Z');
 
 describe('DrizzleNotificationRepository.markChatThreadRead', () => {
   it('marks queued in-app rows for that thread link as read', async () => {
@@ -59,7 +60,7 @@ describe('DrizzleNotificationRepository.markChatThreadRead', () => {
     await repo.save(chatNotification({ userId: user.id, workspaceId: ws.id, linkUrl: CONV_A }));
     await repo.save(chatNotification({ userId: user.id, workspaceId: ws.id, linkUrl: CONV_A }));
 
-    await repo.markChatThreadRead(user.id, ws.id, CONV_A);
+    await repo.markChatThreadRead(user.id, ws.id, CONV_A, READ_THROUGH);
 
     const rows = await repo.findRecentForUser(user.id, ws.id, 10);
     expect(rows).toHaveLength(2);
@@ -69,12 +70,50 @@ describe('DrizzleNotificationRepository.markChatThreadRead', () => {
     }
   });
 
+  it('does not clear a notification created after the read cursor advanced', async () => {
+    const { db, repo, user, ws } = await setup();
+    const readThrough = new Date('2026-09-10T12:00:00.000Z');
+    await db.insert(notifications).values([
+      {
+        id: randomUUID(),
+        userId: user.id,
+        workspaceId: ws.id,
+        type: 'chat.message',
+        title: '이미 본 메시지',
+        body: '',
+        channel: 'in_app',
+        status: 'queued',
+        linkUrl: CONV_A,
+        createdAt: new Date('2026-09-10T11:59:59.000Z'),
+      },
+      {
+        id: randomUUID(),
+        userId: user.id,
+        workspaceId: ws.id,
+        type: 'chat.message',
+        title: '아직 못 본 메시지',
+        body: '',
+        channel: 'in_app',
+        status: 'queued',
+        linkUrl: CONV_A,
+        createdAt: new Date('2026-09-10T12:00:01.000Z'),
+      },
+    ]);
+
+    await repo.markChatThreadRead(user.id, ws.id, CONV_A, readThrough);
+
+    const rows = await repo.findRecentForUser(user.id, ws.id, 10);
+    const byTitle = new Map(rows.map((row) => [row.title, row.status]));
+    expect(byTitle.get('이미 본 메시지')).toBe('read');
+    expect(byTitle.get('아직 못 본 메시지')).toBe('pending');
+  });
+
   it('leaves other conversations untouched', async () => {
     const { repo, user, ws } = await setup();
     await repo.save(chatNotification({ userId: user.id, workspaceId: ws.id, linkUrl: CONV_A }));
     await repo.save(chatNotification({ userId: user.id, workspaceId: ws.id, linkUrl: CONV_B }));
 
-    await repo.markChatThreadRead(user.id, ws.id, CONV_A);
+    await repo.markChatThreadRead(user.id, ws.id, CONV_A, READ_THROUGH);
 
     const rows = await repo.findRecentForUser(user.id, ws.id, 10);
     const byLink = new Map(rows.map((r) => [r.linkUrl, r.status]));
@@ -106,7 +145,7 @@ describe('DrizzleNotificationRepository.markChatThreadRead', () => {
       }),
     );
 
-    await repo.markChatThreadRead(user.id, ws.id, link);
+    await repo.markChatThreadRead(user.id, ws.id, link, READ_THROUGH);
 
     const rows = await repo.findRecentForUser(user.id, ws.id, 10);
     expect(rows).toHaveLength(2);
@@ -117,7 +156,7 @@ describe('DrizzleNotificationRepository.markChatThreadRead', () => {
     const { repo, user, other, ws } = await setup();
     await repo.save(chatNotification({ userId: other.id, workspaceId: ws.id, linkUrl: CONV_A }));
 
-    await repo.markChatThreadRead(user.id, ws.id, CONV_A);
+    await repo.markChatThreadRead(user.id, ws.id, CONV_A, READ_THROUGH);
 
     const rows = await repo.findRecentForUser(other.id, ws.id, 10);
     expect(rows[0].status).toBe('pending');
@@ -134,7 +173,7 @@ describe('DrizzleNotificationRepository.markChatThreadRead', () => {
       chatNotification({ userId: user.id, workspaceId: otherWs.id, linkUrl: CONV_A }),
     );
 
-    await repo.markChatThreadRead(user.id, ws.id, CONV_A);
+    await repo.markChatThreadRead(user.id, ws.id, CONV_A, READ_THROUGH);
 
     const rows = await repo.findRecentForUser(user.id, otherWs.id, 10);
     expect(rows[0].status).toBe('pending');
@@ -164,7 +203,7 @@ describe('DrizzleNotificationRepository.markChatThreadRead', () => {
       createdAt: stale,
     });
 
-    await repo.markChatThreadRead(user.id, ws.id, CONV_A);
+    await repo.markChatThreadRead(user.id, ws.id, CONV_A, READ_THROUGH);
 
     const rows = await repo.findRecentForUser(user.id, ws.id, 10);
     const byTitle = new Map(rows.map((r) => [r.title, r.status]));
@@ -177,12 +216,12 @@ describe('DrizzleNotificationRepository.markChatThreadRead', () => {
     // "언제 읽었나"가 마지막 열람 시각으로 덮인다.
     const { db, repo, user, ws } = await setup();
     await repo.save(chatNotification({ userId: user.id, workspaceId: ws.id, linkUrl: CONV_A }));
-    await repo.markChatThreadRead(user.id, ws.id, CONV_A);
+    await repo.markChatThreadRead(user.id, ws.id, CONV_A, READ_THROUGH);
     const firstReadAt = (await repo.findRecentForUser(user.id, ws.id, 10))[0].readAt;
     expect(firstReadAt).toBeDefined();
 
     await new Promise((r) => setTimeout(r, 5));
-    await repo.markChatThreadRead(user.id, ws.id, CONV_A);
+    await repo.markChatThreadRead(user.id, ws.id, CONV_A, READ_THROUGH);
 
     const after = (await repo.findRecentForUser(user.id, ws.id, 10))[0];
     expect(after.readAt).toBe(firstReadAt);
@@ -214,7 +253,7 @@ describe('DrizzleNotificationRepository.hasPendingChatNotification', () => {
   it('is false once the thread has been read', async () => {
     const { repo, user, ws } = await setup();
     await repo.save(chatNotification({ userId: user.id, workspaceId: ws.id, linkUrl: CONV_A }));
-    await repo.markChatThreadRead(user.id, ws.id, CONV_A);
+    await repo.markChatThreadRead(user.id, ws.id, CONV_A, READ_THROUGH);
 
     expect(
       await repo.hasPendingChatNotification(user.id, ws.id, CONV_A, windowStart),

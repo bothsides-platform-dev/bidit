@@ -154,7 +154,9 @@ export function FocusComparison(props: Props) {
         icon={<Inbox aria-hidden />}
         title="아직 도착한 견적이 없어요"
         description={
-          hasInvitations ? (
+          deadlineLabel === '마감' ? (
+            '마감일까지 도착한 견적이 없어요.'
+          ) : hasInvitations ? (
             <>
               PG사 <span className="md-numeric">{invitedPgCount}</span>곳에 요청했어요. 견적이
               도착하면 알림으로 알려드릴게요.

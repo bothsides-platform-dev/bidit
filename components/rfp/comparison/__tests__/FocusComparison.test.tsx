@@ -241,6 +241,8 @@ describe('FocusComparison', () => {
       );
 
       expect(screen.getAllByText('마감', { selector: 'span' })).toHaveLength(1);
+      expect(screen.getByText('마감일까지 도착한 견적이 없어요.')).toBeInTheDocument();
+      expect(screen.queryByText(/견적이 도착하면/)).not.toBeInTheDocument();
     } finally {
       vi.useRealTimers();
     }
