@@ -110,6 +110,15 @@ beforeEach(() => {
 
 import { TeamThreadView } from '../TeamThreadView';
 import type { TeamThreadMessage } from '@/lib/server/actions/chat/teamThreadLoader';
+import { MARK_READ_DEBOUNCE_MS } from '@/lib/hooks/useMarkReadWhileVisible';
+
+/** 도착 후 읽음은 트레일링 디바운스다 — "읽음 처리 안 함"을 단언하기 전에 그 창을 지나 보내야 한다.
+ *  기다리지 않고 단언하면 게이트가 없어도 카운트가 아직 그대로라 테스트가 아무것도 지키지 못한다. */
+async function flushReadDebounce() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, MARK_READ_DEBOUNCE_MS + 50));
+  });
+}
 
 // T03:00Z–T14:00Z 창 안의 타임스탬프 — UTC/KST 날짜가 일치(타임존 플레이크 방지).
 const messages: TeamThreadMessage[] = [
@@ -221,6 +230,7 @@ describe('TeamThreadView — 렌더', () => {
     );
 
     expect(await screen.findByText('화면 밖 동료 메시지')).toBeInTheDocument();
+    await flushReadDebounce();
     expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1);
   });
 
@@ -239,6 +249,7 @@ describe('TeamThreadView — 렌더', () => {
         createdAt: '2026-06-10T07:04:00.000Z',
       }),
     );
+    await flushReadDebounce();
     expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1);
 
     act(() => scrollBackToBottom());
@@ -267,6 +278,7 @@ describe('TeamThreadView — 렌더', () => {
         }),
       );
       expect(await screen.findByText('숨은 탭 동료 메시지')).toBeInTheDocument();
+      await flushReadDebounce();
       expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1);
     } finally {
       if (original) Object.defineProperty(document, 'visibilityState', original);
@@ -294,6 +306,7 @@ describe('TeamThreadView — 렌더', () => {
     );
 
     expect(await screen.findByText('내가 쓴 메모')).toBeInTheDocument();
+    await flushReadDebounce();
     expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1);
   });
 

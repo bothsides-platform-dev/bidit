@@ -156,6 +156,15 @@ beforeEach(() => {
 import { ThreadView } from '../ThreadView';
 import { formatTime } from '../format';
 import type { ThreadMessage } from '../types';
+import { MARK_READ_DEBOUNCE_MS } from '@/lib/hooks/useMarkReadWhileVisible';
+
+/** 도착 후 읽음은 트레일링 디바운스다 — "읽음 처리 안 함"을 단언하기 전에 그 창을 지나 보내야 한다.
+ *  기다리지 않고 단언하면 게이트가 없어도 카운트가 아직 그대로라 테스트가 아무것도 지키지 못한다. */
+async function flushReadDebounce() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, MARK_READ_DEBOUNCE_MS + 50));
+  });
+}
 
 const counterparty = { workspaceId: 'pg-1', name: 'OO페이', type: 'pg' as const, logoUpdatedAt: null };
 const viewer = { userId: 'u-self', name: '나', avatarUpdatedAt: null };
@@ -261,6 +270,7 @@ describe('ThreadView', () => {
 
     // 도착 자체는 렌더된다(위에 pill 이 뜬다) — 읽음만 미룬다.
     expect(await screen.findByText('화면 밖 메시지')).toBeInTheDocument();
+    await flushReadDebounce();
     expect(markConversationReadAction).toHaveBeenCalledTimes(1);
   });
 
@@ -279,6 +289,7 @@ describe('ThreadView', () => {
         createdAt: '2026-05-27T06:04:00.000Z',
       });
     });
+    await flushReadDebounce();
     expect(markConversationReadAction).toHaveBeenCalledTimes(1);
 
     act(() => scrollBackToBottom());
@@ -309,6 +320,7 @@ describe('ThreadView', () => {
       });
       // 도착 자체는 렌더된다 — 읽음만 미룬다.
       expect(await screen.findByText('숨은 탭 메시지')).toBeInTheDocument();
+      await flushReadDebounce();
       expect(markConversationReadAction).toHaveBeenCalledTimes(1);
     } finally {
       if (original) Object.defineProperty(document, 'visibilityState', original);
@@ -336,6 +348,7 @@ describe('ThreadView', () => {
     });
 
     expect(await screen.findByText('내 메시지 echo')).toBeInTheDocument();
+    await flushReadDebounce();
     expect(markConversationReadAction).toHaveBeenCalledTimes(1);
   });
 
