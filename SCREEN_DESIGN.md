@@ -60,8 +60,7 @@ Authenticated AppShell
 │  └─ /rfp/:id                     (딜룸 — 목록 행 클릭 시 `@modal` 인터셉트 블러 모달, 새로고침·딥링크는 정식 페이지(둘 다 DealRoomFull) · 비교·선정 인라인, 별도 award 라우트 없음)
 ├─ /rfp-create                   (RFP 작성 위저드 — `/rfp` 하위가 아니라 최상위 라우트. 옛 `/rfp/new` 는 `next.config.ts` 리다이렉트로 남아 있다)
 ├─ /inbox
-│  ├─ /inbox/:rfpId                (딜룸 — `@modal` 인터셉트 모달 + 정식 페이지)
-│  └─ /inbox/:rfpId/submitted
+│  └─ /inbox/:rfpId                (딜룸 — `@modal` 인터셉트 모달 + 정식 페이지, 제출 후 결과 대기도 인플레이스 흡수)
 ├─ /opportunities                (pg — 오픈 RFP 게시판)
 ├─ /tutorial                     (buyer+pg — 온보딩 튜토리얼. 홈 환영 모달/재유도 배너의 진입점. buyer는 BuyerTutorialFlow가 실제 여정(작성→도착연출→비교·선정→완료) 제공, pg는 PgTutorialFlow가 실제 여정(초대 수신→요청 조건 확인→견적 작성·제출→완료) 제공. 오픈 샌드박스: 전부 프리필 + 코치마크가 실제 버튼 클릭을 안내(차단 없음 — 자유 입력·탐색 허용, 이탈은 확인 다이얼로그). 코스 이탈 시(이전/스텝 점프·안내 무시 클릭) 코치마크가 현재 화면 기준 스텝으로 ~0.5s 안에 자동 점프·복귀. 완료 시 /home 리다이렉트)
 ├─ /notifications
@@ -76,7 +75,7 @@ Authenticated AppShell
    ├─ /settings/notifications
    └─ /settings/audit-log         (admin·운영계정 — 워크스페이스 활동 기록)
 
-Admin console (별도 top-level 트리, role-guard in admin/(protected)/layout.tsx)
+Admin console (별도 저장소 `admin-supporter-b`, role-guard in admin/(protected)/layout.tsx)
 ├─ /admin/login
 └─ /admin                        (protected — 대시보드 index)
    ├─ /admin/buyers   · /admin/buyers/:id
@@ -105,7 +104,7 @@ Admin console (별도 top-level 트리, role-guard in admin/(protected)/layout.t
 | P1 | `/home` | 신규 RFP, 임박 마감, 제출 완료, 수주율 | `KpiStrip`, `DeadlineWidget`, `RfpProgressWidget` |
 | P2 | `/inbox` | 받은 견적 요청 표 목록. 상태(신규/견적 보냄/마감)·마감일·가맹점 등급 필터를 제공하며 `view` 쿼리나 과거 뷰 쿠키와 무관하게 항상 표로 표시한다. 작성중 단계는 제거 — 미제출 응답은 신규로 표시한다. | `InboxList`, `BoardFilterBar`, `Chip` |
 | P3 | `/inbox/:rfpId` | 구매사 메타·등급(있으면)·RFP 확인 + 정형 Bid 작성(딜룸 — B4 와 동일 `@modal` 인터셉트/정식 페이지 구조, `PgDealRoomBody`). 사업자번호 미입력·등급 미입력 안내는 `RfpBriefPanel` 인라인(일반 등급 가정 9개 카드사 폴백). **초안 자동 복원**: 작성 중이던 내용이 있으면 화면 열 때 묻지 않고 그대로 복원되고 토스트로 알린다(빈 초안은 복원 안 함 — `isPristineDraft` 판별). 사이드바의 `초기화` 버튼으로 확인 후 전체 리셋(정산조건·수수료·견적서까지). **견적 템플릿 불러오기**(1단계 상시 노출): 저장된 템플릿이 0개여도 빈 상태 안내 + `/quote-templates` 링크를 보여준다. 템플릿을 고르면 적용 토스트 노출. **딜룸 채팅**(B4 와 동일, 상대 = 구매사 고정 — `DealRoomChat` 이 `fixedCounterparty` 시드) — 견적 작성 중 질의응답·내부 메모. **선정 종료 후(결과 통합형)**: `견적 작성` 탭의 제출 상태가 결과로 승격된다 — 본인 선정 시 `DealResultHeader`(award, `"이 견적이 선정됐어요"`) + 구매사 `ContactBlock`; 타사 선정 시 `DealResultHeader`(neutral, `"이번엔 선정되지 않았어요"`, 연락처 없음). 헤더 칩은 `선정됨`/`선정 마감`(`pgRequestChip`). 두 경우 모두 `보낸 내용 보기`(SubmittedSummary) 유지. **전자서명 '계약' 탭**(`SigningTab`, 본인 선정 시만): B4 와 동일한 구조·컴포넌트를 공유하며 탭 맨 앞·기본 활성. 카드 전체가 역할로 갈리는 것은 `awaiting_pg_template` 한 상태뿐 — PG 화면은 `계약서를 올리고 보내요` + `계약서 올리기` 단일 액션이고(누르면 스노우싸인 임베드가 딜룸 위를 덮는 거의 전체화면 모달 `SigningSendModal` 로 열린다 — 백드롭·Escape·닫기 세 경로 모두 '계약서 작성을 그만둘까요?' 확인을 거친다. 작업물이 스노우싸인 안에만 있어 언마운트가 곧 소실이기 때문이고, iframe 진행 상태를 읽을 수 없어 확인은 무조건 뜬다), 구매사 화면은 `PG사가 계약서를 준비하고 있어요` 대기 안내다. PG 대기 상태에는 보조 액션 `보낸 계약서 찾기`(`SigningRecoveryDialog`)가 함께 붙는다 — 발송은 됐는데 완료 신호가 유실돼 화면이 대기에 갇혔을 때, 이 딜로 보낸 계약서 후보를 받아 **사람이 골라** 잇는다(스캔/후보/실패/막힘 4단계 상태 기계, 자동 채택 없음). 두 액션 모두 동료가 발송 리스를 쥐고 있으면 토스트 대신 **확인 다이얼로그**로 이어받기를 제안하고(임베드는 `ConfirmDialog`, 스캔은 같은 다이얼로그의 `held` 단계), 이어받으면 밀려난 동료 화면은 인앱 알림을 받아 즉시 닫힌다. 쥔 사람이 본인이면 이어받기 대신 '다른 탭에서 작성 중' 안내만 띄운다. 선정 마일스톤 라벨만은 `send_failed`·발송 전 취소된 `canceled`에서도 역할별로 문구가 갈린다(구매사 '견적을 선정했어요' / PG '이 견적이 선정됐어요'). 미선정 PG 는 서명 상태를 절대 못 본다(봉인 경계 — 서버 로더가 `awardedToMe` 일 때만 조회). | `DealRoomModal`, `DealRoomFull`, `DealRoomShell`, `PgDealRoomBody`, `DealRoomActionRail`, `DealRoomCenter`, `RfpBriefPanel`, `BidWizard`, `SigningTab`, `SigningSendModal`, `SigningSendEmbed`, `SigningRecoveryDialog`, `SigningSummaryStrip`, `AwardContextLine`, `DealRoomChat`, `DealRoomChatFab`, `ChatPanel`, `DealRoomContext`, `DealResultHeader`, `ContactBlock`, `CopyButton` |
-| P4 | `/inbox/:rfpId/submitted` | 제출 완료, 결과 대기, 수정/철회 정책 안내 | `SubmittedState` |
+| P4 | (P3에 통합) | 제출 완료·결과 대기·수정/철회 안내는 `/inbox/:rfpId` 딜룸에서 인플레이스로 보여준다. | `PgDealRoomBody`, `BidWizard` |
 | P7 | `/opportunities` | 오픈 RFP 게시판 — 초대받지 않은 PG가 발견·콜드 피치. 공개는 비경쟁 화이트리스트(`OpportunityListing`)뿐, 수수료·현재 조건 등은 비노출. PG 홈 탐색 섹션의 "전체 보기" 대상 | `OpportunityList`, `OpportunityRequestDialog` |
 | P5 | `/settings/profile` | PG 회사 정보 (워크스페이스 이름·연락처). **사용자 섹션**: 프로필 사진 업로드·삭제(`UserAvatarForm`) + **휴대폰 인증**(`UserPhoneForm` — B6 와 같은 컴포넌트. PG 담당자도 서명 당사자라 번호가 없으면 발송이 막힌다). **워크스페이스 로고는 승인된 admin·운영계정이 편집하고, 이름은 같은 권한으로 변경 요청**(B6 와 동일한 운영자 심사·`canEditWorkspace` 술어 — 사업자번호 폼은 buyer 전용이라 PG 화면에 없음) | `UserAvatarForm`, `UserPhoneForm`, `WorkspaceLogoForm`, `WorkspaceNameForm` |
 | P6 | `/settings/members` | 같은 워크스페이스 멤버 관리(도메인 자동 합류 없음 — 초대만). 권한과 마지막 승인 admin 보호는 B7과 같다. | `MembersPanel`, `InviteMemberForm` |
