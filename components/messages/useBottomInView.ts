@@ -40,15 +40,35 @@ export function useBottomInView({
     onEnterRef.current = onEnter;
   });
 
+  // 관찰은 ref 객체가 아니라 **실제 노드**를 따라간다. ThreadView 의 tabs 변형은
+  // RFP·파일 탭을 다녀오면 목록과 센티널을 새로 마운트하는데 ref 객체는 그대로라
+  // deps 로는 그 교체를 볼 수 없다 — 떨어져 나간 옛 노드를 계속 보면 게이트가 실제
+  // 화면을 영영 따라가지 못한다. 그래서 커밋마다 노드 동일성만 비교한다(같으면 끝).
+  const boundRef = useRef<{ target: HTMLElement; observer: IntersectionObserver } | null>(null);
+
   useEffect(() => {
-    const target = targetRef.current;
     // 관찰자가 없는 환경(구형 브라우저·일부 테스트)에서는 게이트를 **열어 둔다**.
     // 닫으면 읽음 처리가 아예 돌지 않아 원래 VoC(배지가 안 꺼짐)가 그대로
     // 돌아온다 — 거짓 영수증보다 그쪽이 확실한 회귀다.
-    if (!target || typeof IntersectionObserver === 'undefined') {
+    if (typeof IntersectionObserver === 'undefined') {
       inViewRef.current = true;
       return;
     }
+    const target = targetRef.current;
+    const bound = boundRef.current;
+    if (bound?.target === target) return;
+
+    bound?.observer.disconnect();
+    boundRef.current = null;
+    // 목록이 마운트돼 있지 않다 = 다른 탭이 보이는 중이다. 도착한 메시지는 눈에
+    // 보일 수 없으므로 게이트를 닫는다.
+    if (!target) {
+      inViewRef.current = false;
+      return;
+    }
+    // 다시 붙을 때는 '안 보임'에서 시작한다 — 첫 보고가 '보임'이면 그 전이가 만회를
+    // 부른다. 처음 붙을 때만 '보임'에서 시작한다(스레드는 하단으로 스크롤된 채 열린다).
+    if (bound) inViewRef.current = false;
 
     const observer = new IntersectionObserver(
       (entries) => {
@@ -63,8 +83,16 @@ export function useBottomInView({
       { root: rootRef.current ?? null },
     );
     observer.observe(target);
-    return () => observer.disconnect();
-  }, [rootRef, targetRef]);
+    boundRef.current = { target, observer };
+  });
+
+  useEffect(
+    () => () => {
+      boundRef.current?.observer.disconnect();
+      boundRef.current = null;
+    },
+    [],
+  );
 
   return useCallback(() => inViewRef.current, []);
 }

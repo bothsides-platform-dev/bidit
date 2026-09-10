@@ -1179,6 +1179,12 @@ export interface NotificationRepo {
     userId: string,
     workspaceId: string,
     threadLinkUrl: string,
+    /**
+     * 정리 상한 — 방금 저장한 읽음 cursor(ISO). 이 시각 **이후에** 만들어진 알림은
+     * 사용자가 본 적 없는 메시지의 것이라 남긴다(cursor 저장과 이 UPDATE 사이에
+     * 도착한 메시지). 필수인 이유: 빠뜨리면 조용히 무제한 정리로 돌아간다.
+     */
+    readAt: string,
     tx?: Tx,
   ): Promise<void>;
   /** 동일 window 내 pending team_chat 인앱 알림 존재 여부(rfp 단위 dedupe). */

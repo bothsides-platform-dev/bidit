@@ -69,6 +69,8 @@ describe('markConversationReadAction', () => {
       'user-1',
       'workspace-1',
       '/messages?c=00000000-0000-4000-8000-000000000001',
+      // 정리 상한 = 방금 저장한 cursor — 그 뒤에 도착한 알림은 건드리지 않는다.
+      '2026-09-05T12:00:00.000Z',
     );
   });
 

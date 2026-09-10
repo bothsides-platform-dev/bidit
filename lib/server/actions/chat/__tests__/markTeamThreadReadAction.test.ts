@@ -43,6 +43,7 @@ describe('markTeamThreadReadAction', () => {
       'user-1',
       'workspace-1',
       `/messages?t=${RFP_ID}`,
+      '2026-09-05T12:00:00.000Z',
     );
   });
 
