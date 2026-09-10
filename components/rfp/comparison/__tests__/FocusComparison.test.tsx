@@ -48,6 +48,8 @@ vi.mock('@/lib/server/actions/rfp/requestRequoteAction', () => ({ requestRequote
 import { FocusComparison } from '../FocusComparison';
 import { DealRoomProvider, useDealRoom } from '@/components/deal-room/DealRoomContext';
 import type { Bid } from '@/lib/types/bid';
+import { wsById } from '@/lib/types/__tests__/_workspace-fixtures';
+
 
 // FocusComparison 은 이제 DealRoomProvider 안에서 포커스 PG 를 publish 한다. 기본 render 를
 // 프로바이더로 감싸고, Probe 가 컨텍스트의 counterparty 를 캡처해 publish 를 검증한다.
@@ -94,8 +96,7 @@ const kg = makeBid({ id: 'b-kg', pgWsId: 'pg-kg', settleCycle: 'D+2', settleLimi
 
 const baseProps = {
   bids: [kg, toss], // intentionally not pre-sorted
-  pgWsNameMap: { 'pg-toss': '토스페이먼츠', 'pg-kg': 'KG이니시스' },
-  pgWsLogoUpdatedAtMap: {} as Record<string, string | null>,
+  pgWsById: wsById({ 'pg-toss': '토스페이먼츠', 'pg-kg': 'KG이니시스' }),
   current: { feeRate: '2.8%' },
   rfpStatus: 'sent',
   awardedBidId: null,
@@ -150,7 +151,101 @@ describe('FocusComparison', () => {
 
   it('shows an empty state when no bids have arrived', () => {
     render(<FocusComparison {...baseProps} bids={[]} />);
-    expect(screen.getByText(/견적을 기다리고 있어요/)).toBeInTheDocument();
+    expect(screen.getByText('아직 도착한 견적이 없어요')).toBeInTheDocument();
+  });
+
+  it('견적이 없으면 초대 현황과 마감을 보여주고 PG 관리로 이동할 수 있다', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-09T03:00:00+09:00'));
+    const onManageInvitations = vi.fn();
+
+    try {
+      render(
+        <FocusComparison
+          {...baseProps}
+          bids={[]}
+          invitedPgCount={3}
+          deadline="2026-09-14T23:59:59+09:00"
+          onManageInvitations={onManageInvitations}
+        />,
+      );
+
+      expect(screen.getByText('아직 도착한 견적이 없어요')).toBeInTheDocument();
+      expect(screen.getByText(/PG사/, { selector: 'p' })).toHaveTextContent(
+        'PG사 3곳에 요청했어요',
+      );
+      expect(screen.getByText('D-5')).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: '초대 현황 보기' }));
+      expect(onManageInvitations).toHaveBeenCalledOnce();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('편집할 수 없고 초대도 없으면 PG사를 추가할 수 있다고 안내하지 않는다', () => {
+    render(
+      <FocusComparison
+        {...baseProps}
+        bids={[]}
+        invitedPgCount={0}
+        canEditInvitations={false}
+        onManageInvitations={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole('button', { name: 'PG 관리 보기' })).toBeInTheDocument();
+    expect(screen.queryByText(/PG사를 추가하면/)).not.toBeInTheDocument();
+  });
+
+  it('발송 대기 PG만 있으면 요청 완료가 아니라 초대 발송이 필요하다고 안내한다', () => {
+    render(
+      <FocusComparison
+        {...baseProps}
+        bids={[]}
+        invitedPgCount={0}
+        draftPgCount={2}
+        onManageInvitations={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByText(
+        (_, element) =>
+          element?.tagName === 'P' &&
+          element.textContent === 'PG사 2곳을 추가했어요. 초대를 보내면 견적을 받을 수 있어요.',
+      ),
+    ).toHaveTextContent(
+      'PG사 2곳을 추가했어요. 초대를 보내면 견적을 받을 수 있어요.',
+    );
+    expect(
+      screen.getByText(
+        (_, element) => element?.tagName === 'SPAN' && element.textContent === '발송 대기 2곳',
+      ),
+    ).toHaveTextContent('발송 대기 2곳');
+    expect(screen.queryByText(/요청했어요/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '초대 현황 보기' })).toBeInTheDocument();
+  });
+
+  it('마감이 지난 빈 견적 화면은 마감 상태를 한 번만 표시한다', () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-09-09T03:00:00+09:00'));
+
+    try {
+      render(
+        <FocusComparison
+          {...baseProps}
+          bids={[]}
+          deadline="2026-09-08T23:59:59+09:00"
+          onManageInvitations={vi.fn()}
+        />,
+      );
+
+      expect(screen.getAllByText('마감', { selector: 'span' })).toHaveLength(1);
+      expect(screen.getByText('마감일까지 도착한 견적이 없어요.')).toBeInTheDocument();
+      expect(screen.queryByText(/견적이 도착하면/)).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('구간 셀렉터를 바꾸면 카드 요율 표시가 그 구간 값으로 바뀐다', () => {
@@ -246,8 +341,7 @@ describe('FocusComparison — requote CTA + status chips', () => {
     render(
       <FocusComparison
         bids={[bid]}
-        pgWsNameMap={{ 'pg-1': 'OO페이' }}
-        pgWsLogoUpdatedAtMap={{}}
+        pgWsById={wsById({ 'pg-1': 'OO페이' })}
         current={{ feeRate: null, settlementCycle: null, settlementLimit: null, guaranteeInsurance: null }}
         rfpStatus="sent"
         awardedBidId={null}
@@ -267,8 +361,7 @@ describe('FocusComparison — requote CTA + status chips', () => {
     render(
       <FocusComparison
         bids={[bid]}
-        pgWsNameMap={{ 'pg-1': 'OO페이' }}
-        pgWsLogoUpdatedAtMap={{}}
+        pgWsById={wsById({ 'pg-1': 'OO페이' })}
         current={{ feeRate: null, settlementCycle: null, settlementLimit: null, guaranteeInsurance: null }}
         rfpStatus="sent"
         awardedBidId={null}
@@ -287,8 +380,7 @@ describe('FocusComparison — requote CTA + status chips', () => {
     render(
       <FocusComparison
         bids={[bid]}
-        pgWsNameMap={{ 'pg-1': 'OO페이' }}
-        pgWsLogoUpdatedAtMap={{}}
+        pgWsById={wsById({ 'pg-1': 'OO페이' })}
         current={{ feeRate: null }}
         rfpStatus="sent"
         awardedBidId={null}
@@ -339,13 +431,13 @@ describe('FocusComparison — 채팅 레일 상대 publish', () => {
   });
 });
 
-describe('FocusComparison — pgWsLogoUpdatedAtMap → BidTabStrip 로고 전달', () => {
-  it('pgWsLogoUpdatedAtMap에 값이 있으면 BidTabStrip이 WorkspaceAvatar 이미지를 렌더한다', () => {
+describe('FocusComparison — pgWsById → BidTabStrip 로고 전달', () => {
+  it('pgWsById에 값이 있으면 BidTabStrip이 WorkspaceAvatar 이미지를 렌더한다', () => {
     const logoTs = '2026-01-01T00:00:00.000Z';
     render(
       <FocusComparison
         {...baseProps}
-        pgWsLogoUpdatedAtMap={{ 'pg-toss': logoTs, 'pg-kg': null }}
+        pgWsById={wsById({ 'pg-toss': '토스페이먼츠', 'pg-kg': 'KG이니시스' }, { 'pg-toss': logoTs })}
       />,
     );
     const expectedSrc = `/api/workspace/pg-toss/avatar?v=${Date.parse(logoTs)}`;
@@ -353,13 +445,13 @@ describe('FocusComparison — pgWsLogoUpdatedAtMap → BidTabStrip 로고 전달
     expect(img).not.toBeNull();
   });
 
-  it('pgWsLogoUpdatedAtMap이 비어 있으면 로고 이미지가 렌더되지 않는다', () => {
-    render(<FocusComparison {...baseProps} pgWsLogoUpdatedAtMap={{}} />);
+  it('pgWsById에 로고 버전이 없으면 로고 이미지가 렌더되지 않는다', () => {
+    render(<FocusComparison {...baseProps} pgWsById={wsById({ 'pg-toss': '토스페이먼츠', 'pg-kg': 'KG이니시스' })} />);
     expect(document.querySelector('img[src*="/api/workspace/"]')).toBeNull();
   });
 });
 
-describe('FocusComparison — pgWsLogoUpdatedAtMap → CounterpartyProfileCard 로고 전달', () => {
+describe('FocusComparison — pgWsById → CounterpartyProfileCard 로고 전달', () => {
   beforeEach(() => {
     cardSpy.lastCounterparty = null;
   });
@@ -367,7 +459,7 @@ describe('FocusComparison — pgWsLogoUpdatedAtMap → CounterpartyProfileCard �
   it('활성 PG의 logoUpdatedAt을 CounterpartyProfileCard에 전달한다', () => {
     const logoTs = '2026-01-01T00:00:00.000Z';
     render(
-      <FocusComparison {...baseProps} pgWsLogoUpdatedAtMap={{ 'pg-toss': logoTs, 'pg-kg': null }} />,
+      <FocusComparison {...baseProps} pgWsById={wsById({ 'pg-toss': '토스페이먼츠', 'pg-kg': 'KG이니시스' }, { 'pg-toss': logoTs })} />,
     );
     // 기본 활성 = 최저 카드수수료(토스, pg-toss)
     expect(cardSpy.lastCounterparty).toMatchObject({
@@ -377,7 +469,7 @@ describe('FocusComparison — pgWsLogoUpdatedAtMap → CounterpartyProfileCard �
   });
 
   it('로고가 없는 활성 PG에는 logoUpdatedAt=null을 전달한다', () => {
-    render(<FocusComparison {...baseProps} pgWsLogoUpdatedAtMap={{}} />);
+    render(<FocusComparison {...baseProps} pgWsById={wsById({ 'pg-toss': '토스페이먼츠', 'pg-kg': 'KG이니시스' })} />);
     expect(cardSpy.lastCounterparty).toMatchObject({
       workspaceId: 'pg-toss',
       logoUpdatedAt: null,

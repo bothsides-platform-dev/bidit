@@ -142,7 +142,7 @@ export function MessageInbox({ items, initialSelectedKey = null, className }: Pr
           className="hidden w-64 shrink-0 flex-col border-l border-[var(--md-sys-color-outline-variant)] xl:flex"
         >
           <div className="flex h-[44px] shrink-0 items-center border-b border-[var(--md-sys-color-outline-variant)] px-3 text-xs font-medium uppercase tracking-wide text-[var(--md-sys-color-on-surface-variant)]">
-            컨텍스트
+            대화 정보
           </div>
           <ContextPanel
             conversationId={selected.kind === 'counterparty' ? selected.conversationId : selected.rfpId}

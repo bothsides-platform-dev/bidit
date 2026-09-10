@@ -1,5 +1,6 @@
-import { and, desc, eq, gte, isNull, or, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, isNull, lte, or, sql } from 'drizzle-orm';
 import { notifications } from '@/lib/db/schema';
+import { teamThreadLink } from '@/lib/chat/thread-link';
 import type {
   Notification,
   NotificationChannel,
@@ -39,6 +40,24 @@ function rowToNotification(row: NotifRow): Notification {
   };
 }
 
+/**
+ * `markChatThreadRead` 가 거슬러 올라가는 최대 기간.
+ *
+ * `notifications` 는 `created_at` 으로 RANGE 파티션된 테이블이다(위 스키마 주석).
+ * 하한이 없으면 이 UPDATE 는 파티션을 하나도 쳐내지 못하고 월별 자식 테이블을
+ * 전부 연다 — 그리고 이 쿼리는 이제 스레드를 열 때 1회가 아니라 **보이는 동안
+ * 도착하는 메시지마다** 도는 핫패스다(useMarkReadWhileVisible).
+ *
+ * 대가는 명시적이다: 이 기간보다 오래된 안 읽은 알림은 스레드를 열어도 여기서
+ * 걷히지 않는다. 사용자는 알림함에서 직접 지울 수 있고(`markAllRead` 에는 하한이
+ * 없다), 3개월 넘게 안 읽은 채팅 알림은 실사용에서 사실상 없다.
+ */
+export const MARK_READ_LOOKBACK_DAYS = 90;
+
+function markReadCutoff(): Date {
+  return new Date(Date.now() - MARK_READ_LOOKBACK_DAYS * 24 * 60 * 60 * 1000);
+}
+
 export class DrizzleNotificationRepository implements NotificationRepo {
 
   constructor(private readonly _db: Tx) {}
@@ -61,6 +80,7 @@ export class DrizzleNotificationRepository implements NotificationRepo {
       channel: uiChannel(n.channel),
       status: uiStatus(n.status),
       linkUrl: n.linkUrl ?? null,
+      createdAt: new Date(n.createdAt),
       sentAt: n.sentAt ? new Date(n.sentAt) : null,
       readAt: n.readAt ? new Date(n.readAt) : null,
     });
@@ -82,6 +102,7 @@ export class DrizzleNotificationRepository implements NotificationRepo {
         channel: uiChannel(n.channel),
         status: uiStatus(n.status),
         linkUrl: n.linkUrl ?? null,
+        createdAt: new Date(n.createdAt),
         sentAt: n.sentAt ? new Date(n.sentAt) : null,
         readAt: n.readAt ? new Date(n.readAt) : null,
       })),
@@ -145,6 +166,7 @@ export class DrizzleNotificationRepository implements NotificationRepo {
   async hasPendingChatNotification(
     userId: string,
     workspaceId: string,
+    threadLinkUrl: string,
     windowStart: Date,
     tx?: Tx,
   ): Promise<boolean> {
@@ -158,11 +180,40 @@ export class DrizzleNotificationRepository implements NotificationRepo {
           eq(notifications.workspaceId, workspaceId),
           eq(notifications.type, 'chat.message'),
           eq(notifications.status, 'queued'),
+          // 대화 컬럼이 없어 linkUrl 이 곧 대화 식별자다(팀 채팅과 같은 방식).
+          eq(notifications.linkUrl, threadLinkUrl),
           gte(notifications.createdAt, windowStart),
         ),
       )
       .limit(1);
     return rows.length > 0;
+  }
+
+  async markChatThreadRead(
+    userId: string,
+    workspaceId: string,
+    threadLinkUrl: string,
+    readThrough: Date,
+    tx?: Tx,
+  ): Promise<void> {
+    const db = this.h(tx);
+    await db
+      .update(notifications)
+      .set({ status: 'read', readAt: sql`now()` })
+      .where(
+        and(
+          eq(notifications.userId, userId),
+          eq(notifications.workspaceId, workspaceId),
+          eq(notifications.linkUrl, threadLinkUrl),
+          // 파티션 프루닝 하한 — MARK_READ_LOOKBACK_DAYS 주석 참조.
+          gte(notifications.createdAt, markReadCutoff()),
+          // 상한 = 읽음 cursor. cursor 저장 뒤 이 UPDATE 전에 도착한 메시지의
+          // 알림까지 지우면 사용자가 아직 못 본 메시지를 읽었다고 거짓말한다.
+          lte(notifications.createdAt, readThrough),
+          // 이미 읽은 행은 건드리지 않는다 — readAt 이 뒤로 밀리면 안 된다.
+          isNull(notifications.readAt),
+        ),
+      );
   }
 
   async hasPendingTeamNotification(
@@ -180,7 +231,7 @@ export class DrizzleNotificationRepository implements NotificationRepo {
         and(
           eq(notifications.userId, userId),
           eq(notifications.type, 'team_chat.message'),
-          eq(notifications.linkUrl, `/messages?t=${rfpId}`),
+          eq(notifications.linkUrl, teamThreadLink(rfpId)),
           eq(notifications.status, 'queued'),
           gte(notifications.createdAt, windowStart),
         ),
@@ -217,7 +268,7 @@ export class DrizzleNotificationRepository implements NotificationRepo {
         and(
           eq(notifications.userId, userId),
           eq(notifications.type, 'team_chat.mention'),
-          eq(notifications.linkUrl, `/messages?t=${rfpId}`),
+          eq(notifications.linkUrl, teamThreadLink(rfpId)),
           eq(notifications.status, 'queued'),
           gte(notifications.createdAt, windowStart),
         ),

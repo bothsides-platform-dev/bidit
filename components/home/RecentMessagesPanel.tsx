@@ -3,7 +3,8 @@ import { Users } from 'lucide-react';
 import { EmptyState } from '@/components/primitives/EmptyState';
 import { EnvelopeIcon } from '@/components/icons';
 import { AvatarWithPresence } from '@/components/presence/AvatarWithPresence';
-import { UNREAD_LABEL } from '@/lib/types/notification';
+import { UNREAD_COUNT_SUFFIX, UNREAD_LABEL } from '@/lib/types/notification';
+import { conversationThreadLink, teamThreadLink } from '@/lib/chat/thread-link';
 import type { InboxListItem } from '@/lib/server/actions/chat/inboxLoader';
 
 /** Max items previewed in the home widget; the rest are in /messages. */
@@ -44,10 +45,12 @@ export function RecentMessagesPanel({
         메시지
         {unreadCount > 0 && (
           <span
-            aria-label={`읽지 않은 메시지 ${unreadCount}개`}
-            className="md-numeric inline-flex h-5 min-w-5 items-center justify-center rounded-[var(--md-sys-shape-full)] bg-[var(--md-sys-color-primary)] px-1.5 text-xs font-medium text-[var(--md-sys-color-on-primary)]"
+            className="inline-flex h-5 min-w-5 items-center justify-center whitespace-nowrap rounded-[var(--md-sys-shape-full)] bg-[var(--md-sys-color-primary)] px-1.5 text-xs font-medium text-[var(--md-sys-color-on-primary)]"
           >
-            {unreadCount}
+            {/* 숫자만 모노 — 라벨까지 .md-numeric 이면 한국어가 JetBrains Mono 로 찍힌다. */}
+            {UNREAD_LABEL}{' '}
+            <span className="md-numeric">{unreadCount}</span>
+            {UNREAD_COUNT_SUFFIX}
           </span>
         )}
       </header>
@@ -66,8 +69,8 @@ export function RecentMessagesPanel({
                 <Link
                   href={
                     item.kind === 'team'
-                      ? `/messages?t=${item.rfpId}`
-                      : `/messages?c=${item.conversationId}`
+                      ? teamThreadLink(item.rfpId)
+                      : conversationThreadLink(item.conversationId)
                   }
                   className="flex w-full items-start gap-2.5 border-b border-[var(--md-sys-color-outline-variant)] px-3 py-3 transition-colors hover:bg-[var(--md-sys-color-surface-container)]"
                 >

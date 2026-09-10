@@ -11,6 +11,26 @@ import { formatTime } from '../format';
 
 if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
 
+// 하단 센티널 가시성 관찰자 — 읽음의 두 번째 게이트. jsdom 에 없어 스텁한다.
+type IoCb = (entries: { isIntersecting: boolean }[]) => void;
+const intersectionObservers: { fire: (v: boolean) => void }[] = [];
+class IntersectionObserverStub {
+  constructor(cb: IoCb) {
+    intersectionObservers.push({ fire: (v) => cb([{ isIntersecting: v }]) });
+  }
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+vi.stubGlobal('IntersectionObserver', IntersectionObserverStub);
+
+function scrollAwayFromBottom(): void {
+  for (const o of intersectionObservers) o.fire(false);
+}
+function scrollBackToBottom(): void {
+  for (const o of intersectionObservers) o.fire(true);
+}
+
 const sendTeamMessageAction = vi.fn();
 vi.mock('@/lib/server/actions/chat/sendTeamMessageAction', () => ({
   sendTeamMessageAction: (...args: unknown[]) => sendTeamMessageAction(...args),
@@ -39,6 +59,12 @@ vi.mock('@/lib/hooks/useTeamChannel', () => ({
     channelOptions = opts;
     return channelResult;
   },
+}));
+
+// 알림 스토어의 로컬 배지 정리 — 서버 액션 체인을 끌고 오므로 mock 한다.
+const markThreadReadLocal = vi.fn();
+vi.mock('@/lib/hooks/useNotifications', () => ({
+  markThreadReadLocal: (...args: unknown[]) => markThreadReadLocal(...args),
 }));
 
 const toast = vi.fn();
@@ -77,10 +103,25 @@ beforeEach(() => {
   uploadAttachment.mockReset();
   channelOptions = {};
   channelResult = { connected: null };
+  vi.mocked(markTeamThreadReadAction).mockClear();
+  vi.mocked(markTeamThreadReadAction).mockResolvedValue({
+    ok: true,
+    readAt: '2026-06-10T07:00:00.000Z',
+  });
+  intersectionObservers.length = 0;
 });
 
 import { TeamThreadView } from '../TeamThreadView';
 import type { TeamThreadMessage } from '@/lib/server/actions/chat/teamThreadLoader';
+import { MARK_READ_DEBOUNCE_MS } from '@/lib/hooks/useMarkReadWhileVisible';
+
+/** 도착 후 읽음은 트레일링 디바운스다 — "읽음 처리 안 함"을 단언하기 전에 그 창을 지나 보내야 한다.
+ *  기다리지 않고 단언하면 게이트가 없어도 카운트가 아직 그대로라 테스트가 아무것도 지키지 못한다. */
+async function flushReadDebounce() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, MARK_READ_DEBOUNCE_MS + 50));
+  });
+}
 
 // T03:00Z–T14:00Z 창 안의 타임스탬프 — UTC/KST 날짜가 일치(타임존 플레이크 방지).
 const messages: TeamThreadMessage[] = [
@@ -153,8 +194,182 @@ describe('TeamThreadView — 렌더', () => {
   });
 
   it('마운트 시 팀 스레드를 읽음 처리한다', () => {
-    render(<TeamThreadView rfpId="r1" workspaceId="w1" viewerUserId="u1" viewerAvatarUpdatedAt={null} messages={[]} />);
-    expect(markTeamThreadReadAction).toHaveBeenCalledWith({ rfpId: 'r1' });
+    render(base());
+    expect(markTeamThreadReadAction).toHaveBeenCalledWith({
+      rfpId: 'rfp-1',
+      throughMessageId: 'tm2',
+    });
+  });
+
+  it('열려 있는 동안 동료 메시지가 오면 다시 읽음 처리한다', async () => {
+    render(base({ viewerUserId: 'u-me' }));
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1));
+
+    act(() =>
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'tm-live-read',
+        body: '동료 메시지',
+        authorUserId: 'u-mate',
+        authorName: '이동료',
+        createdAt: '2026-06-10T07:00:00.000Z',
+      }),
+    );
+
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(2));
+    expect(markTeamThreadReadAction).toHaveBeenLastCalledWith({
+      rfpId: 'rfp-1',
+      throughMessageId: 'tm-live-read',
+    });
+  });
+
+  it('위로 스크롤해 최신 메시지가 화면에 없으면 읽음 처리하지 않는다', async () => {
+    render(base({ viewerUserId: 'u-me' }));
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1));
+
+    act(() => scrollAwayFromBottom());
+    act(() =>
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'tm-offscreen',
+        body: '화면 밖 동료 메시지',
+        authorUserId: 'u-mate',
+        authorName: '이동료',
+        createdAt: '2026-06-10T07:03:00.000Z',
+      }),
+    );
+
+    expect(await screen.findByText('화면 밖 동료 메시지')).toBeInTheDocument();
+    await flushReadDebounce();
+    expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('아래로 다시 내려와 최신 메시지가 보이면 그때 읽음 처리한다', async () => {
+    render(base({ viewerUserId: 'u-me' }));
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1));
+
+    act(() => scrollAwayFromBottom());
+    act(() =>
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'tm-catchup',
+        body: '나중에 볼 동료 메시지',
+        authorUserId: 'u-mate',
+        authorName: '이동료',
+        createdAt: '2026-06-10T07:04:00.000Z',
+      }),
+    );
+    await flushReadDebounce();
+    expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1);
+
+    act(() => scrollBackToBottom());
+
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(2));
+  });
+
+  it('탭이 숨겨져 있으면 도착한 메시지로 읽음 처리하지 않는다', async () => {
+    render(base({ viewerUserId: 'u-me' }));
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1));
+
+    const original = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState');
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'hidden',
+    });
+    try {
+      act(() =>
+        channelOptions.onMessage?.({
+          type: 'message',
+          id: 'tm-live-hidden',
+          body: '숨은 탭 동료 메시지',
+          authorUserId: 'u-mate',
+          authorName: '이동료',
+          createdAt: '2026-06-10T07:01:00.000Z',
+        }),
+      );
+      expect(await screen.findByText('숨은 탭 동료 메시지')).toBeInTheDocument();
+      await flushReadDebounce();
+      expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1);
+    } finally {
+      if (original) Object.defineProperty(document, 'visibilityState', original);
+      else
+        Object.defineProperty(document, 'visibilityState', {
+          configurable: true,
+          get: () => 'visible',
+        });
+    }
+  });
+
+  it('내 메시지 echo 로는 읽음 처리하지 않는다', async () => {
+    render(base({ viewerUserId: 'u-me' }));
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1));
+
+    act(() =>
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'tm-live-self',
+        body: '내가 쓴 메모',
+        authorUserId: 'u-me',
+        authorName: '나',
+        createdAt: '2026-06-10T07:02:00.000Z',
+      }),
+    );
+
+    expect(await screen.findByText('내가 쓴 메모')).toBeInTheDocument();
+    await flushReadDebounce();
+    expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('늦게 도착한 예전 팀 메시지가 최신 읽음 경계를 뒤로 돌리지 않는다', async () => {
+    render(base({ viewerUserId: 'u-me' }));
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1));
+    vi.mocked(markTeamThreadReadAction).mockClear();
+
+    act(() => {
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'tm-live-newer',
+        body: '최신 팀 메시지',
+        authorUserId: 'u-mate',
+        authorName: '동료',
+        createdAt: '2026-06-10T07:02:00.000Z',
+      });
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'tm-live-older',
+        body: '늦게 도착한 예전 메시지',
+        authorUserId: 'u-mate',
+        authorName: '동료',
+        createdAt: '2026-06-10T07:01:00.000Z',
+      });
+    });
+
+    await flushReadDebounce();
+    expect(markTeamThreadReadAction).toHaveBeenCalledWith({
+      rfpId: 'rfp-1',
+      throughMessageId: 'tm-live-newer',
+    });
+  });
+
+  it('읽음 처리와 함께 그 스레드의 알림 배지를 로컬에서도 내린다', async () => {
+    render(base());
+
+    await waitFor(() =>
+      expect(markThreadReadLocal).toHaveBeenCalledWith(
+        '/messages?t=rfp-1',
+        '2026-06-10T07:00:00.000Z',
+      ),
+    );
+  });
+
+  it('읽음 서버 처리가 실패하면 알림 배지를 로컬에서 먼저 내리지 않는다', async () => {
+    vi.mocked(markTeamThreadReadAction).mockResolvedValue({ ok: false, error: 'FORBIDDEN' });
+    markThreadReadLocal.mockClear();
+
+    render(base());
+
+    await waitFor(() => expect(markTeamThreadReadAction).toHaveBeenCalledTimes(1));
+    expect(markThreadReadLocal).not.toHaveBeenCalled();
   });
 
   it('컴포저는 좁은 레일에서 placeholder 가 두 줄로 잘리지 않도록 min-w-0 슬롯과 한 줄 placeholder 를 쓴다', () => {
@@ -167,6 +382,24 @@ describe('TeamThreadView — 렌더', () => {
 });
 
 describe('TeamThreadView — 전송', () => {
+  it('전송 중 말풍선을 morph 오버레이 없이 목록에 직접 표시한다', async () => {
+    const user = userEvent.setup();
+    let resolveSend!: (v: unknown) => void;
+    sendTeamMessageAction.mockReturnValue(new Promise((res) => { resolveSend = res; }));
+    render(base());
+
+    await user.type(screen.getByPlaceholderText('우리 팀에게만 보이는 메모를 남겨보세요…'), '즉시 표시 메모');
+    await user.click(screen.getByRole('button', { name: '보내기' }));
+
+    const bubble = await screen.findByText('즉시 표시 메모');
+    expect(bubble.closest('[data-message-row]')).toHaveAttribute('data-sender', 'self');
+    expect(document.querySelector('[data-morph-bounds]')).toBeNull();
+
+    await act(async () => {
+      resolveSend({ ok: true, messageId: 'tm-new', createdAt: '2026-06-10T01:23:00.000Z' });
+    });
+  });
+
   it('보내기 클릭 시 sendTeamMessageAction({rfpId, body}) 호출 + 낙관적 말풍선 표시 후 확정 승격', async () => {
     const user = userEvent.setup();
     render(base());
@@ -690,21 +923,5 @@ describe('TeamThreadView — 멘션', () => {
     // 본인(ME) 멘션 → 강조 span.
     const el = screen.getByText('@김구매');
     expect(el).toHaveAttribute('data-self-mention', 'true');
-  });
-});
-
-// 팀 채팅도 딜룸 모달 안에 임베드된다(TeamThreadPane). 전송 morph 클론이 최상위 z 로
-// body 에 portal 되므로, 패널 경계를 표시해 클론이 모달 헤더 위로 새지 않게 한다.
-describe('TeamThreadView — 전송 morph', () => {
-  it('채팅 패널에 morph 경계를 달아 클론이 목록·입력창 밖으로 새지 않게 한다', () => {
-    render(base());
-
-    const bounds = document.querySelector('[data-morph-bounds]');
-    expect(bounds).not.toBeNull();
-    // 경계는 morph 의 두 끝점(도착=말풍선 목록, 출발=입력창)을 모두 품어야 한다.
-    expect(bounds).toContainElement(document.querySelector('[data-message-list]'));
-    expect(bounds).toContainElement(
-      screen.getByPlaceholderText('우리 팀에게만 보이는 메모를 남겨보세요…'),
-    );
   });
 });

@@ -36,7 +36,16 @@ vi.mock('@/lib/auth/session', () => ({
       : Promise.reject(new Error('UNAUTHENTICATED')),
 }));
 
-import { resendWorkspaceInviteAction } from '../resendWorkspaceInviteAction';
+import { resendWorkspaceInviteAction as rawResendWorkspaceInviteAction } from '../resendWorkspaceInviteAction';
+
+type ResendInput = Omit<Parameters<typeof rawResendWorkspaceInviteAction>[0], 'workspaceId'>;
+
+function resendWorkspaceInviteAction(input: ResendInput) {
+  return rawResendWorkspaceInviteAction({
+    ...input,
+    workspaceId: sessionRef.value?.user.workspaceId ?? '',
+  });
+}
 
 let db: PgliteDB;
 

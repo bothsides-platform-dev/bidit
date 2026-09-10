@@ -8,12 +8,16 @@ type Handler = (ctx: unknown) => void;
 function makeSub() {
   const handlers: Record<string, Handler[]> = {};
   return {
+    state: 'unsubscribed',
     handlers,
     on: vi.fn((event: string, cb: Handler) => {
       (handlers[event] ??= []).push(cb);
     }),
     subscribe: vi.fn(),
     unsubscribe: vi.fn(),
+    off: vi.fn((event: string, cb: Handler) => {
+      handlers[event] = (handlers[event] ?? []).filter((handler) => handler !== cb);
+    }),
     publish: vi.fn().mockResolvedValue(undefined),
     presenceStats: vi.fn().mockResolvedValue({ numClients: 1, numUsers: 1 }),
     // helper for tests to fire a stored handler
@@ -323,7 +327,7 @@ describe('useChatChannel — 라이브 연결 (URL 설정)', () => {
     expect(result.current.connected).toBeNull();
   });
 
-  it('(g) client connected 이벤트 → connected:true', async () => {
+  it('(g) subscription subscribed 이벤트 → connected:true', async () => {
     const { renderHook, act } = await import('@testing-library/react');
     const { useChatChannel } = await import('@/lib/hooks/useChatChannel');
 
@@ -331,38 +335,37 @@ describe('useChatChannel — 라이브 연결 (URL 설정)', () => {
     expect(result.current.connected).toBeNull();
 
     act(() => {
-      mockClient.__fire('connected', {});
+      mockSub.__fire('state', { oldState: 'subscribing', newState: 'subscribed' });
     });
 
     expect(result.current.connected).toBe(true);
   });
 
-  it('(h) client disconnected 이벤트 → connected:false', async () => {
+  it('(h) subscription subscribing 이벤트 → connected:false', async () => {
     const { renderHook, act } = await import('@testing-library/react');
     const { useChatChannel } = await import('@/lib/hooks/useChatChannel');
 
     const { result } = renderHook(() => useChatChannel(CONV_ID, {}));
 
     act(() => {
-      mockClient.__fire('connected', {});
+      mockSub.__fire('state', { oldState: 'subscribing', newState: 'subscribed' });
     });
     expect(result.current.connected).toBe(true);
 
     act(() => {
-      mockClient.__fire('disconnected', {});
+      mockSub.__fire('state', { oldState: 'subscribed', newState: 'subscribing' });
     });
     expect(result.current.connected).toBe(false);
   });
 
-  it('언마운트 시 connected/disconnected 핸들러를 client.off 로 해제한다', async () => {
+  it('언마운트 시 subscription state 핸들러를 해제한다', async () => {
     const { renderHook } = await import('@testing-library/react');
     const { useChatChannel } = await import('@/lib/hooks/useChatChannel');
 
     const { unmount } = renderHook(() => useChatChannel(CONV_ID, {}));
     unmount();
 
-    const offCalls = mockClient.off.mock.calls.map((args: unknown[]) => args[0] as string);
-    expect(offCalls).toContain('connected');
-    expect(offCalls).toContain('disconnected');
+    const offCalls = mockSub.off.mock.calls.map((args: unknown[]) => args[0] as string);
+    expect(offCalls).toContain('state');
   });
 });

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Chip } from '@/components/primitives/Chip';
@@ -13,6 +13,8 @@ import { PaperclipIcon, ArrowUpIcon, ArrowDownIcon, ChevronLeftIcon, CheckIcon, 
 import { DRAFT_OWNER_ID, ACCEPT_EXT } from '@/lib/server/storage/constants';
 import { sendChatMessageAction } from '@/lib/server/actions/chat/sendChatMessageAction';
 import { markConversationReadAction } from '@/lib/server/actions/chat/markConversationReadAction';
+import { markThreadReadLocal } from '@/lib/hooks/useNotifications';
+import { conversationThreadLink } from '@/lib/chat/thread-link';
 import { useChatChannel } from '@/lib/hooks/useChatChannel';
 import { useConversationReadReceipt } from '@/lib/chat/read-state/client';
 import { useWorkspacePresence } from '@/components/presence/WorkspacePresenceProvider';
@@ -29,11 +31,10 @@ import { ContextPanel } from './ContextPanel';
 import { useComposerAttachments, toReadyMessageAttachments } from './useComposerAttachments';
 import { ChatComposerTextarea } from './ChatComposerTextarea';
 import { useStickToBottom } from './useStickToBottom';
+import { useThreadReadTracking } from './useThreadReadTracking';
 import { useStringDraft } from './useStringDraft';
 import { promoteSentMessage, removeMessage, applyLiveEcho } from './optimistic-thread';
 import { computeMessageGrouping } from './message-grouping';
-import { MorphFlightLayer } from './MorphFlightLayer';
-import { useMessageMorph } from './useMessageMorph';
 import { NEW_TAB_NOTICE } from '@/lib/a11y/link-notice';
 
 type Props = {
@@ -92,7 +93,7 @@ const TYPING_THROTTLE_MS = 2000;
 
 // 낙관적 전송 중에만 쓰는 표시 전용 확장 — 서버 로더 타입(ThreadMessage)에는
 // pending 개념이 없으므로 클라이언트 뷰 모델로만 둔다.
-// localKey — tempId→realId 승격에도 React key·morph 타깃 매칭을 고정하는 안정 키.
+// localKey — tempId→realId 승격에도 React key를 고정하는 안정 키.
 type LocalMessage = ThreadMessage & { pending?: boolean; localKey?: string };
 
 // Capturing group so split keeps the URLs; matched per-part with a
@@ -155,8 +156,6 @@ export function ThreadView({
   // (MessageInbox renders [] first, then the loaded thread for the SAME
   // conversationId — no remount). setState during render causes React to
   // restart the render immediately with no extra committed paint.
-  // 리싱크 자체는 아래 morph 훅 선언 뒤에서 수행한다(clearFlights 를 함께 불러야 하고,
-  // useMessageMorph 는 useStickToBottom 뒤라는 선언 순서 불변식이 있다).
   const [prevMessages, setPrevMessages] = useState<ThreadMessage[]>(messages);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const lastTypingSentAt = useRef(0);
@@ -166,19 +165,11 @@ export function ThreadView({
   const { listRef, bottomRef, showNewMessagePill, scrollToBottom, onListScroll } =
     useStickToBottom({ count: localMessages.length, isOwnLast: lastIsOwn, withPill: true });
 
-  // 전송 morph — 입력 텍스트가 말풍선으로 변신. 측정 effect 가 자동 스크롤 뒤에
-  // 실행돼야 하므로 useStickToBottom *뒤*에 선언한다(listRef 의존이 이를 강제).
-  const morph = useMessageMorph({ listRef });
-  const composerRef = useRef<HTMLDivElement>(null);
-
   // messages prop 리싱크(위 prevMessages 선언 참조). setState during render 라 React 가
-  // 추가 페인트 없이 렌더를 즉시 재시작한다. 교체된 서버 행에는 localKey 가 없어 morph
-  // 타깃 키가 끊기므로, 진행 중인 클론을 함께 거둬야 실 말풍선과 겹치지 않는다
-  // (clearFlights 는 비어 있으면 같은 참조를 돌려줘 렌더 중 호출해도 루프가 없다).
+  // 추가 페인트 없이 렌더를 즉시 재시작한다.
   if (prevMessages !== messages) {
     setPrevMessages(messages);
     setLocalMessages(messages);
-    morph.clearFlights();
   }
 
   // Live presence — driven by WorkspacePresenceProvider (not useChatChannel).
@@ -187,6 +178,27 @@ export function ThreadView({
     conversationId,
     counterpartyWorkspaceId: counterparty.workspaceId,
     messages: localMessages,
+  });
+
+  // Mark-read while the thread is open and visible: clears my unread and
+  // publishes a read receipt to the counterparty. Fires on open, on every
+  // counterparty message that lands while visible, and once on returning from a
+  // hidden tab — 예전에는 마운트 1회뿐이라 대화창을 켜 둔 채 메시지를 받으면
+  // 배지도 읽음 영수증도 그대로였다(VoC).
+  const markRead = useThreadReadTracking({
+    threadKey: conversationId,
+    initialBoundary: localMessages.at(-1),
+    listRef,
+    bottomRef,
+    run: (id, throughMessageId) => {
+      void markConversationReadAction({ conversationId: id, throughMessageId })
+        .then((result) => {
+          if (result.ok) {
+            markThreadReadLocal(conversationThreadLink(id), result.readAt);
+          }
+        })
+        .catch(() => undefined);
+    },
   });
 
   // Live channel — graceful no-op when realtime is unconfigured (dev/tests):
@@ -198,6 +210,10 @@ export function ThreadView({
       const id = data.id;
       const sender: ThreadMessage['sender'] =
         data.authorWsId === counterparty.workspaceId ? 'other' : 'self';
+      // 내 echo 로는 읽음을 갱신하지 않는다 — 상대가 보낸 것만 "봤다"의 대상이다.
+      if (sender === 'other') {
+        markRead({ id, createdAt: data.createdAt as string });
+      }
       // Centrifugo recovery can redeliver, and handleSend may have already
       // promoted the pending bubble to this id → dedup. 본인 echo 면 tempId 로
       // 정확 매칭 후 확정 승격(append 하면 중복), 아니면 새로 append.
@@ -224,13 +240,6 @@ export function ThreadView({
     onRead: readReceipt.accept,
   });
 
-  // Mark-read on open: clears my unread + publishes a read receipt to the
-  // counterparty. Once per conversation (MessageInbox keys ThreadView by
-  // conversationId so a switch remounts and re-fires).
-  useEffect(() => {
-    void markConversationReadAction({ conversationId });
-  }, [conversationId]);
-
   const totalAttachmentCount = useMemo(
     () => localMessages.reduce((sum, m) => sum + m.attachments.length, 0),
     [localMessages],
@@ -253,8 +262,6 @@ export function ThreadView({
     const tempId = `pending-${Math.random().toString(36).slice(2, 10)}`;
     const restoreDraft = draft;
     const restoreAttachments = attachments;
-    // morph 예약 — 텍스트가 아직 입력창에 있는 지금(append/clear 전) 출발 위치를 잰다.
-    morph.scheduleFlight(composerRef.current, tempId, body);
     setLocalMessages((prev) => [
       ...prev,
       {
@@ -289,7 +296,6 @@ export function ThreadView({
     } catch {
       setSending(false);
       setLocalMessages((prev) => removeMessage(prev, tempId));
-      morph.endFlight(tempId); // 진행 중인 morph 클론도 함께 정리(롤백된 말풍선과 짝).
       setDraft(restoreDraft);
       setAttachments(restoreAttachments);
       toast('메시지를 보내지 못했어요. 다시 시도해 주세요.', { type: 'error' });
@@ -303,7 +309,6 @@ export function ThreadView({
     } else {
       // 실패: 낙관적 말풍선을 제거하고 입력·첨부를 복원해 다시 보낼 수 있게 한다.
       setLocalMessages((prev) => removeMessage(prev, tempId));
-      morph.endFlight(tempId); // 진행 중인 morph 클론도 함께 정리(롤백된 말풍선과 짝).
       setDraft(restoreDraft);
       setAttachments(restoreAttachments);
       toast('메시지를 보내지 못했어요. 다시 시도해 주세요.', { type: 'error' });
@@ -320,12 +325,8 @@ export function ThreadView({
   }, [sendTyping]);
 
   return (
-    <>
     <div className="flex h-full min-h-0 min-w-0 flex-1">
-    {/* data-morph-bounds — 전송 morph 클론을 가둘 경계. 클론은 최상위 z 로 body 에
-        portal 되므로(목록 overflow 회피), 이 표시가 없으면 딜룸 모달 헤더 같은 바깥
-        크롬 위를 가로지른다. 출발(입력창)·도착(목록) 두 끝점을 모두 품어야 한다. */}
-    <div data-morph-bounds className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
+    <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col">
       {/* 헤더 — 상대 워크스페이스 + 타입 + 프레즌스 + 타이핑 */}
       <header className="flex shrink-0 items-center gap-2.5 border-b border-[var(--md-sys-color-outline-variant)] px-4 py-3">
         {onBack && (
@@ -436,7 +437,7 @@ export function ThreadView({
         )}
         {localMessages.map((m, i) => {
           const isSelf = m.sender === 'self';
-          const rowKey = m.localKey ?? m.id; // 승격에도 불변(React key·morph 타깃)
+          const rowKey = m.localKey ?? m.id; // 승격에도 불변(React key)
           // 날짜 구분선·묶음 판정은 computeMessageGrouping 단일 출처(TeamThreadView 공유).
           // 양쪽(self·other) 모두 작성자 헤더를 단다 — 같은 회사라도 담당자가 다르면
           // 묶음·헤더를 분리한다(authorUserId 기준).
@@ -478,8 +479,7 @@ export function ThreadView({
                   </div>
                 )}
 
-                {/* morph 진행 중인 self 말풍선은 숨김 — 떠오르는 클론으로 대체(안착 후 복귀). */}
-                <div className={cn('w-full', isSelf && morph.isMorphing(rowKey) && 'opacity-0')}>
+                <div className="w-full">
                   <MessageBubble
                     isSelf={isSelf}
                     pending={m.pending}
@@ -487,7 +487,6 @@ export function ThreadView({
                     body={m.body}
                     attachments={m.attachments}
                     renderBody={renderBody}
-                    bubbleKey={rowKey}
                   />
                 </div>
 
@@ -566,8 +565,7 @@ export function ThreadView({
             e.target.value = '';
           }}
         />
-        {/* composerRef — morph 출발 위치(텍스트 박스) 측정 타깃. 래퍼는 flex-1 슬롯 유지. */}
-        <div ref={composerRef} className="flex min-w-0 flex-1">
+        <div className="flex min-w-0 flex-1">
           <ChatComposerTextarea
             value={draft}
             onChange={(v) => {
@@ -598,7 +596,5 @@ export function ThreadView({
       </>)}
     </div>
     </div>
-    <MorphFlightLayer {...morph.layerProps} renderText={renderBody} />
-    </>
   );
 }

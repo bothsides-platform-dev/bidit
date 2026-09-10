@@ -5,6 +5,8 @@ import type { ReactElement } from 'react';
 import { FocusComparison } from '../FocusComparison';
 import { DealRoomProvider } from '@/components/deal-room/DealRoomContext';
 import type { Bid } from '@/lib/types/bid';
+import { wsById } from '@/lib/types/__tests__/_workspace-fixtures';
+
 
 // FocusComparison 은 DealRoomProvider 안에서 동작한다(포커스 PG publish).
 const render = (ui: ReactElement) => rtlRender(ui, { wrapper: DealRoomProvider });
@@ -45,8 +47,7 @@ function bid(id: string, pgWsId: string): Bid {
 
 const baseProps = {
   bids: [bid('b1', 'pgA'), bid('b2', 'pgB')],
-  pgWsNameMap: { pgA: '샘플페이 A', pgB: '샘플페이 B' },
-  pgWsLogoUpdatedAtMap: {} as Record<string, string | null>,
+  pgWsById: wsById({ pgA: '샘플페이 A', pgB: '샘플페이 B' }),
   current: {},
   awardedBidId: null,
   requiredPaymentMethods: ['card'] as const,

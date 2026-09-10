@@ -35,6 +35,7 @@ import {
 } from '@/lib/server/repositories/factory';
 import { parseTeamDigestDedupeKey } from './team-digest';
 import { mentionsToPlainText } from '@/lib/utils/team-mentions';
+import { teamThreadLink } from '@/lib/chat/thread-link';
 import { baseUrlFor } from '@/lib/server/env';
 import { computeBackoff } from './backoff';
 import { sendEntriesInBatches } from './batch-send';
@@ -106,7 +107,7 @@ export async function flushTeamChatDigests(
     const html = await renderChatMessage({
       senderName,
       preview,
-      conversationUrl: `${origin}/messages?t=${rfpId}`,
+      conversationUrl: `${origin}${teamThreadLink(rfpId)}`,
       count: unread.length,
     });
     const subject =

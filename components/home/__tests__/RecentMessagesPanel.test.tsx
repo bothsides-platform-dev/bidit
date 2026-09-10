@@ -6,6 +6,7 @@ import { render, screen, cleanup } from '@testing-library/react';
 import type { ConversationListItem } from '@/components/messages/types';
 import type { InboxListItem } from '@/lib/server/actions/chat/inboxLoader';
 import type { PresenceState } from '@/components/presence/WorkspacePresenceProvider';
+import { unreadCountLabel } from '@/lib/types/notification';
 
 // next/link renders as <a> in jsdom
 vi.mock('next/link', () => ({
@@ -60,6 +61,14 @@ function makeConv(overrides?: Partial<ConversationListItem>): InboxListItem {
   return { kind: 'counterparty', key: `c:${c.conversationId}`, ...c };
 }
 
+/** 배지 — 숫자를 별도 span 으로 떼어도 찾을 수 있게 전체 텍스트로 매칭한다
+ *  (getByText 기본 매처는 자기 직계 텍스트 노드만 본다). */
+function unreadBadge(count: number): HTMLElement {
+  return screen.getByText(
+    (_, el) => el?.tagName === 'SPAN' && el.textContent === unreadCountLabel(count),
+  );
+}
+
 describe('RecentMessagesPanel', () => {
   it('renders a conversation row with a deep-link to /messages?c=<id>', () => {
     render(<RecentMessagesPanel items={[makeConv({ conversationId: 'conv-xyz' })]} unreadCount={0} />);
@@ -105,12 +114,22 @@ describe('RecentMessagesPanel', () => {
 
   it('shows an unread badge when unreadCount > 0', () => {
     render(<RecentMessagesPanel items={[makeConv()]} unreadCount={3} />);
-    expect(screen.getByLabelText('읽지 않은 메시지 3개')).toBeInTheDocument();
+    expect(unreadBadge(3)).toBeInTheDocument();
   });
 
   it('does not show an unread badge when unreadCount is 0', () => {
     render(<RecentMessagesPanel items={[makeConv()]} unreadCount={0} />);
-    expect(screen.queryByLabelText(/읽지 않은 메시지/)).not.toBeInTheDocument();
+    expect(screen.queryByText(unreadCountLabel(0))).not.toBeInTheDocument();
+  });
+
+  it('keeps the label in the UI font and puts only the count in .md-numeric', () => {
+    // .md-numeric 은 수치 전용이다(DESIGN.md §3) — 한국어 라벨까지 모노로 찍으면 안 된다.
+    render(<RecentMessagesPanel items={[makeConv()]} unreadCount={3} />);
+    const badge = unreadBadge(3);
+    expect(badge).not.toHaveClass('md-numeric');
+    const numeric = badge.querySelectorAll('.md-numeric');
+    expect(numeric).toHaveLength(1);
+    expect(numeric[0].textContent).toBe('3');
   });
 
   it('renders the empty state when items is empty', () => {

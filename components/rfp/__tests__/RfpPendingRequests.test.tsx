@@ -21,7 +21,7 @@ vi.mock('@/lib/server/actions/rfp', () => ({
 import { RfpPendingRequests } from '../RfpPendingRequests';
 
 const reqs = [
-  { id: 'req-1', pgWsId: 'ws-toss', pgWsName: '토스페이먼츠', message: '제안 드리고 싶어요', createdAt: new Date().toISOString() },
+  { id: 'req-1', pgWs: { id: 'ws-toss', name: '토스페이먼츠', type: 'pg' as const, logoUpdatedAt: null }, message: '제안 드리고 싶어요', createdAt: new Date().toISOString() },
 ];
 
 beforeEach(() => {

@@ -3,17 +3,19 @@
 import { useState } from 'react';
 import { RfpBriefPanel } from '../RfpBriefPanel';
 import { CounterpartyProfileCard } from '@/components/messages/CounterpartyProfileCard';
+import { toCounterparty } from '@/components/messages/types';
 import { PAYMENT_METHOD_LABELS, type PaymentMethod } from '@/lib/types/bid';
 import type { PgRfpDetailData } from '@/lib/server/rfp-detail-loader';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
 
 type Props = {
-  buyerName: string;
+  buyer: WorkspaceDisplay;
   rfp: PgRfpDetailData['rfp'];
   currentStep: number;
   feeInputMethods: PaymentMethod[];
 };
 
-export function BidContextStrip({ buyerName, rfp, currentStep, feeInputMethods }: Props) {
+export function BidContextStrip({ buyer, rfp, currentStep, feeInputMethods }: Props) {
   const [open, setOpen] = useState(false);
 
   // 단계별 '요청 핵심' — 2단계(수수료)에선 요청 결제수단을 노출.
@@ -28,7 +30,7 @@ export function BidContextStrip({ buyerName, rfp, currentStep, feeInputMethods }
         <span className="flex min-w-0 items-center gap-2 truncate text-[12px] text-[var(--md-sys-color-on-surface-variant)]">
           <CounterpartyProfileCard
             variant="profile"
-            counterparty={{ name: buyerName, type: 'buyer', workspaceId: rfp.buyerWsId }}
+            counterparty={toCounterparty(buyer)}
             rfpContext={{ id: rfp.id, title: rfp.title }}
           />
           <span className="mx-1 text-[var(--md-sys-color-outline-variant)]">·</span>
@@ -45,7 +47,7 @@ export function BidContextStrip({ buyerName, rfp, currentStep, feeInputMethods }
       </div>
       {open && (
         <div className="border-t border-[var(--md-sys-color-outline-variant)] px-4 py-5 max-h-[420px] overflow-y-auto">
-          <RfpBriefPanel rfp={rfp} buyerName={buyerName} />
+          <RfpBriefPanel rfp={rfp} buyer={buyer} />
         </div>
       )}
     </div>

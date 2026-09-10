@@ -55,5 +55,8 @@ export const UNREAD_LABEL = '안 읽음';
 
 /** 개수까지 붙인 형태 — 사이드바 배지·헤더 칩의 접근 가능한 이름. */
 export function unreadCountLabel(count: number): string {
-  return `${UNREAD_LABEL} ${count}건`;
+  return `${UNREAD_LABEL} ${count}${UNREAD_COUNT_SUFFIX}`;
 }
+
+/** 개수 뒤에 붙는 단위. 숫자만 `.md-numeric` 으로 떼어 그리는 표면이 라벨을 다시 적지 않도록 분리했다. */
+export const UNREAD_COUNT_SUFFIX = '건';

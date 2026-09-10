@@ -22,6 +22,9 @@ describe('DrizzleRfpTeamMessageReadRepository', () => {
     const t2 = new Date('2026-06-14T01:00:00Z');
     await repo.upsert(rfp.id, ws.id, u.id, t2);
     expect((await repo.getFor(rfp.id, ws.id, u.id))?.lastReadAt.toISOString()).toBe(t2.toISOString());
+
+    await repo.upsert(rfp.id, ws.id, u.id, t1);
+    expect((await repo.getFor(rfp.id, ws.id, u.id))?.lastReadAt.toISOString()).toBe(t2.toISOString());
   });
 
   it('isolates read state per (rfp, workspace, user)', async () => {

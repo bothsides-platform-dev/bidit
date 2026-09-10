@@ -20,6 +20,7 @@ import {
   tutorialBuyerRfp,
   tutorialBids,
   tutorialPgNames,
+  tutorialPgWsById,
   tutorialBuyerName,
   tutorialRfpDraftSeed,
   tutorialBizProfile,
@@ -93,10 +94,7 @@ export function BuyerTutorialFlow() {
           <div className="px-6 py-6">
             <FocusComparison
               bids={tutorialBids}
-              pgWsNameMap={tutorialPgNames}
-              pgWsLogoUpdatedAtMap={Object.fromEntries(
-                tutorialBids.map((b) => [b.pgWsId, null]),
-              )}
+              pgWsById={tutorialPgWsById}
               current={{
                 feeRate: tutorialBuyerRfp.currentFeeRate,
                 settlementCycle: tutorialBuyerRfp.currentSettlementCycle,

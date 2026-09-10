@@ -330,6 +330,32 @@ describe('TeamChatService.listMessages', () => {
 });
 
 describe('TeamChatService.markRead + listThreads', () => {
+  it('화면에 실제로 도착한 팀 메시지 시각까지만 cursor를 전진시킨다', async () => {
+    const me = await seedUser(db, { email: 'boundary-me@b.com', name: '나' });
+    const mate = await seedUser(db, { email: 'boundary-mate@b.com', name: '동료' });
+    const ws = await seedBuyerWorkspace(db);
+    await seedMembership(db, ws.id, me.id, 'admin');
+    await seedMembership(db, ws.id, mate.id, 'member');
+    const rfp = await seedRfp(db, { buyerWsId: ws.id, createdBy: me.id });
+    const svc = await buildService();
+    const sent = await svc.sendMessage(
+      { rfpId: rfp.id, body: '화면에 도착한 메시지' },
+      { userId: mate.id, workspaceId: ws.id, workspaceType: 'buyer' },
+    );
+    expect(sent.ok).toBe(true);
+    if (!sent.ok) return;
+
+    const mark = await svc.markRead(
+      rfp.id,
+      { userId: me.id, workspaceId: ws.id, workspaceType: 'buyer' },
+      sent.messageId,
+    );
+
+    expect(mark).toEqual({ ok: true, readAt: sent.createdAt });
+    const stored = await (await getRfpTeamMessageReadRepo()).getFor(rfp.id, ws.id, me.id);
+    expect(stored?.lastReadAt.toISOString()).toBe(sent.createdAt);
+  });
+
   it('markRead then listThreads clears unread for own read; teammate message raises unread', async () => {
     const me = await seedUser(db, { email: 'me@b.com', name: '나' });
     const mate = await seedUser(db, { email: 'mate@b.com', name: '동료' });
@@ -341,12 +367,14 @@ describe('TeamChatService.markRead + listThreads', () => {
     const actorMe: TeamChatActor = { userId: me.id, workspaceId: ws.id, workspaceType: 'buyer' };
 
     // mate posts a team message
-    await svc.sendMessage({ rfpId: rfp.id, body: '동료 메모' }, { userId: mate.id, workspaceId: ws.id, workspaceType: 'buyer' });
+    const sent = await svc.sendMessage({ rfpId: rfp.id, body: '동료 메모' }, { userId: mate.id, workspaceId: ws.id, workspaceType: 'buyer' });
+    expect(sent.ok).toBe(true);
+    if (!sent.ok) return;
 
     let r = await svc.listThreads(actorMe);
     expect(r.ok && r.threads.find((t) => t.rfpId === rfp.id)?.unread).toBe(true);
 
-    const mark = await svc.markRead(rfp.id, actorMe);
+    const mark = await svc.markRead(rfp.id, actorMe, sent.messageId);
     expect(mark.ok).toBe(true);
 
     r = await svc.listThreads(actorMe);
@@ -355,7 +383,7 @@ describe('TeamChatService.markRead + listThreads', () => {
 });
 
 describe('TeamChatService.sendMessage — notification fan-out', () => {
-  it('fans out one inapp notification to teammates (not author) on send, deduped within window', async () => {
+  it('fans out one inapp notification per message to teammates (not author)', async () => {
     const me = await seedUser(db, { email: 'me@b.com', name: '나' }); // author
     const mate = await seedUser(db, { email: 'mate@b.com', name: '동료' }); // recipient
     const ws = await seedBuyerWorkspace(db);
@@ -372,7 +400,7 @@ describe('TeamChatService.sendMessage — notification fan-out', () => {
       .select()
       .from(notifications)
       .where(and(eq(notifications.userId, mate.id), eq(notifications.type, 'team_chat.message')));
-    expect(mateNotifs).toHaveLength(1); // deduped within the window
+    expect(mateNotifs).toHaveLength(2);
 
     const meNotifs = await db
       .select()

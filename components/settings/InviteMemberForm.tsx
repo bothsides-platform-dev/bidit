@@ -5,7 +5,7 @@ import { Label } from '@/components/primitives/Label';
 import { Button } from '@/components/primitives/Button';
 import { Select } from '@/components/primitives/Select';
 import type { Role } from '@/lib/types/user';
-import { ROLE_OPTIONS, isValidInviteEmail } from './members-panel-utils';
+import { ROLE_OPTIONS, isValidInviteEmail, mutationErrorMessage } from './members-panel-utils';
 import { Divider } from '@/components/primitives/Divider';
 import { underlineInputClass } from '@/components/forms/inputs';
 import { cn } from '@/lib/utils';
@@ -40,6 +40,8 @@ export function InviteMemberForm({ isPending, onInvite }: Props) {
           setError('이미 초대 대기 중인 이메일입니다.');
         } else if (result.error === 'FORBIDDEN_NOT_ADMIN') {
           setError('초대 권한이 없습니다.');
+        } else if (result.error === 'WORKSPACE_CHANGED') {
+          setError(mutationErrorMessage(result.error));
         } else {
           setError(`초대 실패 (${result.error})`);
         }

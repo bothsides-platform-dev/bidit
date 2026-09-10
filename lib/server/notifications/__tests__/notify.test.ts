@@ -23,6 +23,27 @@ afterEach(() => {
 });
 
 describe('notify()', () => {
+  it('호출자가 준 사건 시각을 인앱 알림에도 그대로 사용한다', async () => {
+    const u = await seedUser(db, { email: 'event-time@x.com' });
+    const createdAt = new Date('2026-09-05T12:00:00.000Z');
+
+    const created = await db.transaction((tx) =>
+      notify(tx, {
+        recipients: [{ userId: u.id, workspaceId: null, email: u.email }],
+        channels: ['inapp'],
+        type: 'chat.message',
+        title: 't',
+        body: 'b',
+        createdAt,
+      }),
+    );
+
+    expect(created[0]?.createdAt).toBe(createdAt.toISOString());
+    expect((await db.select().from(notifications))[0]?.createdAt.toISOString()).toBe(
+      createdAt.toISOString(),
+    );
+  });
+
   it('channels:[inapp] → notifications row만, outbox 없음, 생성 알림 반환', async () => {
     const u = await seedUser(db, { email: 'a@x.com' });
     const created = await db.transaction((tx) =>

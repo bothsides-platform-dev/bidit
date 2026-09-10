@@ -1,5 +1,6 @@
 import type {
   ChatConversationRepo,
+  ChatMessageRepo,
   ChatReadRepo,
   WorkspaceRepo,
 } from '@/lib/server/repositories/types';
@@ -65,6 +66,7 @@ function resolveSide(
 export interface ConversationReadState {
   markRead(input: {
     conversationId: string;
+    throughMessageId: string;
     viewer: ConversationReadViewer;
   }): Promise<ServiceResult<{ readAt: string }>>;
   projectInbox(input: {
@@ -99,6 +101,7 @@ export interface ConversationReadState {
 class DefaultConversationReadState implements ConversationReadState {
   constructor(
     private readonly conversationRepo: ChatConversationRepo,
+    private readonly messageRepo: ChatMessageRepo,
     private readonly readRepo: ChatReadRepo,
     private readonly workspaceRepo: WorkspaceRepo,
     private readonly clock: () => Date,
@@ -106,6 +109,7 @@ class DefaultConversationReadState implements ConversationReadState {
 
   async markRead(input: {
     conversationId: string;
+    throughMessageId: string;
     viewer: ConversationReadViewer;
   }): Promise<ServiceResult<{ readAt: string }>> {
     const conversation = await this.conversationRepo.findById(input.conversationId);
@@ -114,7 +118,13 @@ class DefaultConversationReadState implements ConversationReadState {
     const matchesPg = conversation.pgWsId === input.viewer.activeWorkspaceId;
     if (matchesBuyer === matchesPg) return { ok: false, error: 'FORBIDDEN' };
 
-    const attemptedReadAt = this.clock();
+    const boundary = await this.messageRepo.findReadBoundary(input.throughMessageId);
+    if (!boundary || boundary.conversationId !== conversation.id) {
+      return { ok: false, error: 'INVALID_READ_BOUNDARY' };
+    }
+    // DB 시각이 비정상적으로 미래여도 서버 현재보다 앞선 cursor는 쓰지 않는다.
+    const now = this.clock();
+    const attemptedReadAt = new Date(Math.min(boundary.createdAt.getTime(), now.getTime()));
     const persistedReadAt = await this.readRepo.upsert(
       conversation.id,
       input.viewer.activeWorkspaceId,
@@ -309,16 +319,23 @@ export const {
   'conversation_read_state',
   'service',
   async () => {
-    const { getChatConversationRepo, getChatReadRepo, getWorkspaceRepo } = await import(
+    const {
+      getChatConversationRepo,
+      getChatMessageRepo,
+      getChatReadRepo,
+      getWorkspaceRepo,
+    } = await import(
       '@/lib/server/repositories/factory'
     );
-    const [conversationRepo, readRepo, workspaceRepo] = await Promise.all([
+    const [conversationRepo, messageRepo, readRepo, workspaceRepo] = await Promise.all([
       getChatConversationRepo(),
+      getChatMessageRepo(),
       getChatReadRepo(),
       getWorkspaceRepo(),
     ]);
     return new DefaultConversationReadState(
       conversationRepo,
+      messageRepo,
       readRepo,
       workspaceRepo,
       () => new Date(),

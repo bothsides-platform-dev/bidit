@@ -34,7 +34,19 @@ vi.mock('@/lib/auth/session', () => ({
       : Promise.reject(new Error('UNAUTHENTICATED')),
 }));
 
-import { changeWorkspaceMemberRoleAction } from '../changeWorkspaceMemberRoleAction';
+import { changeWorkspaceMemberRoleAction as rawChangeWorkspaceMemberRoleAction } from '../changeWorkspaceMemberRoleAction';
+
+type ChangeRoleInput = Omit<
+  Parameters<typeof rawChangeWorkspaceMemberRoleAction>[0],
+  'workspaceId'
+>;
+
+function changeWorkspaceMemberRoleAction(input: ChangeRoleInput) {
+  return rawChangeWorkspaceMemberRoleAction({
+    ...input,
+    workspaceId: sessionRef.value?.user.workspaceId ?? '',
+  });
+}
 
 let db: PgliteDB;
 

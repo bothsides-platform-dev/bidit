@@ -38,6 +38,7 @@ import type {
 } from '@/lib/types/signing';
 import type { ContractArchive } from '@/lib/types/contract-archive';
 import type { WorkspaceNameChangeRequest } from '@/lib/types/workspace-name-change';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
 
 // Tx union — postgres-js DB, pglite DB, or a transactional handle from either.
 // `any` generics are localised here so individual method signatures stay clean.
@@ -650,21 +651,13 @@ export interface WorkspaceRepo {
    * 표시용 경량 정보 — 신원 카드/메시지 컴포즈가 상대 워크스페이스를 그리는 데 필요한
    * 최소 필드(id·상호명·유형·로고 버전)만. 멤버/bizProfile hydration 없음. 없으면 undefined.
    */
-  getDisplayInfo(
-    workspaceId: string,
-    tx?: Tx,
-  ): Promise<
-    { id: string; name: string; type: WorkspaceType; logoUpdatedAt: string | null } | undefined
-  >;
+  getDisplayInfo(workspaceId: string, tx?: Tx): Promise<WorkspaceDisplay | undefined>;
   /**
    * getDisplayInfo 의 배치판 — 워크스페이스 이름/로고를 id 목록으로 한 번에.
    * RFP 상세·대화 목록 로더가 id 마다 findById 를 돌던 N+1 을 없앤다.
    * 존재하지 않는 id 는 결과에서 빠진다(자리표시자 없음). 순서 미보장.
    */
-  findDisplayInfoByIds(
-    ids: string[],
-    tx?: Tx,
-  ): Promise<{ id: string; name: string; type: WorkspaceType; logoUpdatedAt: string | null }[]>;
+  findDisplayInfoByIds(ids: string[], tx?: Tx): Promise<WorkspaceDisplay[]>;
   /**
    * isMember 의 배치판 — 주어진 워크스페이스 중 사용자가 속한 곳 하나의 id,
    * 없으면 null. 프로필 카드가 상대 워크스페이스마다 isMember 를 돌던 루프를
@@ -1157,13 +1150,42 @@ export interface NotificationRepo {
   markRead(id: string, tx?: Tx): Promise<void>;
   /** 사용자+워크스페이스 전부 읽음 처리. */
   markAllRead(userId: string, workspaceId: string, tx?: Tx): Promise<void>;
-  /** 동일 window 내 queued 상태 chat.message 알림 존재 여부 — 인앱 알림 중복 방지용. */
+  /**
+   * 동일 window 내 queued 상태 chat.message 알림 존재 여부 — 인앱 알림 중복 방지용.
+   *
+   * dedupe 범위는 **대화 단위**(`threadLinkUrl`)다. notifications 에는 대화 컬럼이
+   * 없어 링크가 유일한 식별자이며, 워크스페이스 전체로 잡으면 구매사가 PG 여럿과
+   * 대화 중일 때 한 대화의 queued 알림이 다른 대화의 새 알림을 삼킨다.
+   */
   hasPendingChatNotification(
     userId: string,
     workspaceId: string,
+    threadLinkUrl: string,
     windowStart: Date,
     tx?: Tx,
   ): Promise<boolean>;
+  /**
+   * 한 대화 스레드의 queued 인앱 알림을 읽음 처리한다 — 사용자가 그 대화를 열고
+   * 실제로 보고 있을 때 배지를 걷어내는 경로. 대화 식별자는 `hasPendingChatNotification`
+   * 과 같은 linkUrl 이며, 1:1 대화(`/messages?c=…`)와 팀 스레드(`/messages?t=…`)에
+   * 모두 쓴다.
+   *
+   * ⚠️ 판정은 링크 하나뿐이고 **type 을 보지 않는다** — 같은 스레드를 가리키는
+   * 알림이면 종류를 가리지 않고 함께 걷힌다(현재 `team_chat.mention` 이 그렇고,
+   * 스레드를 열어 본 이상 배지가 남을 이유가 없어 의도된 동작이다). 앞으로 그
+   * 링크를 재사용하는 알림 종류를 추가한다면 이 정리 대상에 함께 들어간다.
+   */
+  markChatThreadRead(
+    userId: string,
+    workspaceId: string,
+    threadLinkUrl: string,
+    /**
+     * 정리 상한 — 방금 저장한 읽음 cursor. 이 시각 이후에 만들어진 알림은
+     * 사용자가 본 적 없는 메시지의 것이므로 남긴다.
+     */
+    readThrough: Date,
+    tx?: Tx,
+  ): Promise<void>;
   /** 동일 window 내 pending team_chat 인앱 알림 존재 여부(rfp 단위 dedupe). */
   hasPendingTeamNotification(userId: string, rfpId: string, windowStart: Date, tx?: Tx): Promise<boolean>;
   /** 소유권 검증 + type 조회 (markRead/retryEmail). 없거나 타인 것이면 undefined. */
@@ -1487,6 +1509,11 @@ export interface ChatMessageRepo {
     messageId: string,
     tx?: Tx,
   ): Promise<{ conversationId: string } | undefined>;
+  /** 읽음 cursor 상한 검증용 — 메시지의 대화와 서버 생성 시각. */
+  findReadBoundary(
+    messageId: string,
+    tx?: Tx,
+  ): Promise<{ conversationId: string; createdAt: Date } | undefined>;
   /**
    * 한 대화의 모든 메시지 + 작성자 이름·이메일(users 조인) — created_at asc.
    * 스레드 로더 전용. 인박스 목록 로더는 가벼운 listByConversation 을 쓴다.
@@ -1545,6 +1572,11 @@ export interface RfpTeamMessageRepo {
     messageId: string,
     tx?: Tx,
   ): Promise<{ workspaceId: string } | undefined>;
+  /** 읽음 cursor 상한 검증용 — 팀 스레드 scope와 서버 생성 시각. */
+  findReadBoundary(
+    messageId: string,
+    tx?: Tx,
+  ): Promise<{ rfpId: string; workspaceId: string; createdAt: Date } | undefined>;
 }
 
 // ── Chat: Message Template ────────────────────────────────────────────
@@ -1688,8 +1720,8 @@ export type RfpTeamMessageRead = {
 };
 
 export interface RfpTeamMessageReadRepo {
-  /** (rfp, workspace, user) PK upsert — last_read_at 갱신(idempotent, monotonic). */
-  upsert(rfpId: string, workspaceId: string, userId: string, at: Date, tx?: Tx): Promise<void>;
+  /** (rfp, workspace, user) PK upsert — 저장된 monotonic last_read_at 반환. */
+  upsert(rfpId: string, workspaceId: string, userId: string, at: Date, tx?: Tx): Promise<Date>;
   /** (rfp, workspace, user) 읽음 row 조회. 없으면 undefined. */
   getFor(rfpId: string, workspaceId: string, userId: string, tx?: Tx): Promise<RfpTeamMessageRead | undefined>;
 }
@@ -1724,10 +1756,10 @@ export type AuditLogRecord = {
   createdAt: string;
   actorName: string | null;
   /**
-   * True when the actor is currently a master/operator (email on the
-   * MASTER_ACCOUNT_EMAILS allowlist). Derived at read time so master actions in
-   * any workspace are identifiable; reflects the current allowlist, not the
-   * write-time state. The actor's email itself is never exposed to the client.
+   * True when the action was performed through master/operator authority.
+   * New workspace-management events snapshot this at write time; legacy rows
+   * fall back to the actor's current allowlist membership. The actor's email
+   * itself is never exposed to the client.
    */
   viaMaster: boolean;
 };

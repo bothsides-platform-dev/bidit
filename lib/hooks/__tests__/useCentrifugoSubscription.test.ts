@@ -8,12 +8,16 @@ type Handler = (ctx: unknown) => void;
 function makeSub() {
   const handlers: Record<string, Handler[]> = {};
   return {
+    state: 'unsubscribed',
     handlers,
     on: vi.fn((event: string, cb: Handler) => {
       (handlers[event] ??= []).push(cb);
     }),
     subscribe: vi.fn(),
     unsubscribe: vi.fn(),
+    off: vi.fn((event: string, cb: Handler) => {
+      handlers[event] = (handlers[event] ?? []).filter((handler) => handler !== cb);
+    }),
     publish: vi.fn().mockResolvedValue(undefined),
     presenceStats: vi.fn().mockResolvedValue({ numClients: 1, numUsers: 1 }),
     __fire(event: string, ctx: unknown) {
@@ -136,21 +140,46 @@ describe('useCentrifugoSubscription — 라이브 연결 (URL 설정)', () => {
     expect(onJoin).toHaveBeenCalled();
   });
 
-  it('connected/disconnected 이벤트로 connected 상태 추적', async () => {
+  it('개별 채널 구독 상태로 connected 상태를 추적한다', async () => {
     const { renderHook, act } = await import('@testing-library/react');
     const { useCentrifugoSubscription } = await import('@/lib/hooks/useCentrifugoSubscription');
 
     const { result } = renderHook(() => useCentrifugoSubscription(CHANNEL, {}));
     expect(result.current.connected).toBeNull();
 
-    act(() => mockClient.__fire('connected', {}));
+    act(() => mockSub.__fire('state', { oldState: 'subscribing', newState: 'subscribed' }));
     expect(result.current.connected).toBe(true);
 
-    act(() => mockClient.__fire('disconnected', {}));
+    act(() => mockSub.__fire('state', { oldState: 'subscribed', newState: 'subscribing' }));
     expect(result.current.connected).toBe(false);
   });
 
-  it('언마운트 시 unsubscribe + removeSubscription + off(connected/disconnected) + subRef 정리', async () => {
+  it('전역 소켓이 연결돼도 개별 채널 구독 전에는 connected가 아니다', async () => {
+    const { renderHook, act } = await import('@testing-library/react');
+    const { useCentrifugoSubscription } = await import('@/lib/hooks/useCentrifugoSubscription');
+
+    const { result } = renderHook(() => useCentrifugoSubscription(CHANNEL, {}));
+    act(() => mockClient.__fire('connected', {}));
+    expect(result.current.connected).not.toBe(true);
+
+    act(() => {
+      mockSub.state = 'subscribed';
+      mockSub.__fire('state', { oldState: 'subscribing', newState: 'subscribed' });
+    });
+    expect(result.current.connected).toBe(true);
+  });
+
+  it('이미 구독된 핸들을 재사용하면 마운트 즉시 connected다', async () => {
+    mockSub.state = 'subscribed';
+    mockClient.getSubscription.mockReturnValue(mockSub);
+    const { renderHook } = await import('@testing-library/react');
+    const { useCentrifugoSubscription } = await import('@/lib/hooks/useCentrifugoSubscription');
+
+    const { result } = renderHook(() => useCentrifugoSubscription(CHANNEL, {}));
+    expect(result.current.connected).toBe(true);
+  });
+
+  it('언마운트 시 unsubscribe + removeSubscription + 구독 state 핸들러 + subRef 정리', async () => {
     const { renderHook } = await import('@testing-library/react');
     const { useCentrifugoSubscription } = await import('@/lib/hooks/useCentrifugoSubscription');
 
@@ -165,9 +194,8 @@ describe('useCentrifugoSubscription — 라이브 연결 (URL 설정)', () => {
 
     expect(mockSub.unsubscribe).toHaveBeenCalled();
     expect(mockClient.removeSubscription).toHaveBeenCalledWith(mockSub);
-    const offEvents = mockClient.off.mock.calls.map((c: unknown[]) => c[0] as string);
-    expect(offEvents).toContain('connected');
-    expect(offEvents).toContain('disconnected');
+    const offEvents = mockSub.off.mock.calls.map((c: unknown[]) => c[0] as string);
+    expect(offEvents).toContain('state');
     expect(result.current.subRef.current).toBeNull();
   });
 

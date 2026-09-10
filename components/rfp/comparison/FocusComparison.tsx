@@ -10,6 +10,8 @@
 //   · PgMemoPdfPanel(메모/PDF) · AwardCtaBar(CTA). 순수 파생은 focus-comparison-model.ts.
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Inbox } from 'lucide-react';
+import { Button } from '@/components/primitives/Button';
 import { Chip } from '@/components/primitives/Chip';
 import { EmptyState } from '@/components/primitives/EmptyState';
 import { Accordion, AccordionItem } from '@/components/ui/accordion';
@@ -28,6 +30,8 @@ import { useFlashOnChange } from './useFlashOnChange';
 import { CounterpartyProfileCard } from '@/components/messages/CounterpartyProfileCard';
 import { useDealRoom } from '@/components/deal-room/DealRoomContext';
 import { Divider } from '@/components/primitives/Divider';
+import { formatDeadline } from '@/lib/utils/format';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
 import {
   type Bid,
   type CustomPaymentMethod,
@@ -37,8 +41,8 @@ import {
 
 type Props = {
   bids: Bid[];
-  pgWsNameMap: Record<string, string>;
-  pgWsLogoUpdatedAtMap: Record<string, string | null>;
+  /** pgWsId → 워크스페이스 신원. 이름 맵과 로고 맵을 나누면 한쪽만 배선되는 사고가 난다. */
+  pgWsById: Record<string, WorkspaceDisplay>;
   current: CurrentConditions;
   rfpStatus: string;
   awardedBidId?: string | null;
@@ -53,6 +57,16 @@ type Props = {
   buyerGrade?: MerchantTier;
   /** 딜룸 모달의 '견적 비교' 탭에 임베드될 때 — 탭이 제목을 제공하므로 외곽 헤더를 숨긴다. */
   hideHeader?: boolean;
+  /** 견적이 아직 없을 때 구매사에게 보여줄 초대 현황. */
+  invitedPgCount?: number;
+  /** PG 관리에 추가했지만 아직 초대 메일을 보내지 않은 PG 수. */
+  draftPgCount?: number;
+  /** 견적이 아직 없을 때 보여줄 요청 마감. */
+  deadline?: string;
+  /** PG 초대를 추가할 권한이 있는지. 읽기 전용 화면에서 실행 불가능한 약속을 피한다. */
+  canEditInvitations?: boolean;
+  /** 빈 상태의 단일 CTA — 구매사 딜룸의 PG 관리 탭으로 이동한다. */
+  onManageInvitations?: () => void;
   /**
    * 가상 샘플 온보딩 전용(opt-in) — 주어지면 클릭 시 실제 awardRfpAction(AwardConfirmDialog)
    * 대신 이 콜백을 호출한다(가짜 선정).
@@ -62,7 +76,7 @@ type Props = {
 };
 
 export function FocusComparison(props: Props) {
-  const { bids, pgWsNameMap, pgWsLogoUpdatedAtMap, current, rfpStatus, awardedBidId, requoteByPg, onSampleAward } = props;
+  const { bids, pgWsById, current, rfpStatus, awardedBidId, requoteByPg, onSampleAward } = props;
   const router = useRouter();
 
   const [tier, setTier] = useState<MerchantTier>(props.buyerGrade ?? 'general');
@@ -90,21 +104,15 @@ export function FocusComparison(props: Props) {
     if (!activePgWsId) return;
     setCounterparty({
       workspaceId: activePgWsId,
-      name: pgWsNameMap[activePgWsId] ?? activePgWsId,
+      name: pgWsById[activePgWsId]?.name ?? activePgWsId,
       type: 'pg',
-      logoUpdatedAt: pgWsLogoUpdatedAtMap[activePgWsId] ?? null,
+      logoUpdatedAt: pgWsById[activePgWsId]?.logoUpdatedAt ?? null,
     });
-  }, [activePgWsId, pgWsNameMap, pgWsLogoUpdatedAtMap, setCounterparty]);
+  }, [activePgWsId, pgWsById, setCounterparty]);
 
-  const pgName = useCallback(
-    (wsId: string) => pgWsNameMap[wsId] ?? wsId,
-    [pgWsNameMap],
-  );
+  const pgName = useCallback((wsId: string) => pgWsById[wsId]?.name ?? wsId, [pgWsById]);
 
-  const pgLogoFn = useCallback(
-    (wsId: string) => pgWsLogoUpdatedAtMap[wsId] ?? null,
-    [pgWsLogoUpdatedAtMap],
-  );
+  const pgLogoFn = useCallback((wsId: string) => pgWsById[wsId]?.logoUpdatedAt ?? null, [pgWsById]);
 
   // 탭/peek/요율-비교 콜백은 안정 참조로 — memo 된 서브패널의 재렌더를 막는다.
   const onPeekEnter = useCallback((bidId: string) => setPeekBidId(bidId), []);
@@ -135,10 +143,79 @@ export function FocusComparison(props: Props) {
   );
 
   if (sortedBids.length === 0 || !active) {
+    const invitedPgCount = props.invitedPgCount ?? 0;
+    const hasInvitations = invitedPgCount > 0;
+    const draftPgCount = props.draftPgCount ?? 0;
+    const hasDrafts = draftPgCount > 0;
+    const canEditInvitations = props.canEditInvitations ?? true;
+    const deadlineLabel = props.deadline ? formatDeadline(props.deadline) : null;
     return (
       <EmptyState
-        title="견적을 기다리고 있어요"
-        description="초대한 PG가 견적을 보내면 여기에서 비교하고 선정할 수 있어요."
+        icon={<Inbox aria-hidden />}
+        title="아직 도착한 견적이 없어요"
+        description={
+          deadlineLabel === '마감' ? (
+            '마감일까지 도착한 견적이 없어요.'
+          ) : hasInvitations ? (
+            <>
+              PG사 <span className="md-numeric">{invitedPgCount}</span>곳에 요청했어요. 견적이
+              도착하면 알림으로 알려드릴게요.
+            </>
+          ) : hasDrafts ? (
+            canEditInvitations ? (
+              <>
+                PG사 <span className="md-numeric">{draftPgCount}</span>곳을 추가했어요. 초대를
+                보내면 견적을 받을 수 있어요.
+              </>
+            ) : (
+              <>
+                PG사 <span className="md-numeric">{draftPgCount}</span>곳이 초대 발송을 기다리고
+                있어요. PG 관리에서 현재 상태를 확인할 수 있어요.
+              </>
+            )
+          ) : canEditInvitations ? (
+            '아직 초대한 PG사가 없어요. PG사를 추가하면 견적을 받을 수 있어요.'
+          ) : (
+            '초대한 PG사가 없어요. PG 관리에서 현재 상태를 확인할 수 있어요.'
+          )
+        }
+        action={
+          <div className="flex flex-col items-center gap-4">
+            {(hasInvitations || hasDrafts || deadlineLabel) && (
+              <div className="flex flex-wrap items-center justify-center gap-2 text-[length:var(--md-typescale-label-medium-size)] text-[var(--md-sys-color-on-surface-variant)]">
+                {hasInvitations && (
+                  <span>
+                    초대 <span className="md-numeric">{invitedPgCount}</span>곳
+                  </span>
+                )}
+                {hasInvitations && hasDrafts && <span aria-hidden>·</span>}
+                {hasDrafts && (
+                  <span>
+                    발송 대기 <span className="md-numeric">{draftPgCount}</span>곳
+                  </span>
+                )}
+                {(hasInvitations || hasDrafts) && deadlineLabel && <span aria-hidden>·</span>}
+                {deadlineLabel &&
+                  (deadlineLabel === '마감' ? (
+                    <span>마감</span>
+                  ) : (
+                    <span>
+                      마감 <span className="md-numeric">{deadlineLabel}</span>
+                    </span>
+                  ))}
+              </div>
+            )}
+            {props.onManageInvitations && (
+              <Button type="button" onClick={props.onManageInvitations}>
+                {hasInvitations || hasDrafts
+                  ? '초대 현황 보기'
+                  : canEditInvitations
+                    ? 'PG사 추가하기'
+                    : 'PG 관리 보기'}
+              </Button>
+            )}
+          </div>
+        }
       />
     );
   }
@@ -223,7 +300,7 @@ export function FocusComparison(props: Props) {
               sortedBids={sortedBids}
               active={active}
               tier={tier}
-              pgWsNameMap={pgWsNameMap}
+              pgWsById={pgWsById}
               onSelect={onSelectByPgWs}
               flash={flash}
             />

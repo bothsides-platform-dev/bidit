@@ -8,8 +8,11 @@ type Props = {
   name: string;
   size?: 'sm' | 'md';
   workspaceId?: string;
-  /** 로고 버전(ISO). 있으면 사진 + ?v 캐시 버스트, 없으면 이니셜. */
-  logoUpdatedAt?: string | null;
+  /**
+   * 로고 버전(ISO). 있으면 사진 + ?v 캐시 버스트, null 이면 이니셜.
+   * **필수다** — optional 이면 배선을 잊어도 이니셜이 정상처럼 보여 누락이 드러나지 않는다.
+   */
+  logoUpdatedAt: string | null;
   className?: string;
 };
 

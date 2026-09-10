@@ -6,11 +6,11 @@ import type {
   ChatConversationRepo,
   ChatMessageRepo,
   InvitationRepo,
-  NotificationRepo,
   RfpRepo,
   UserRepo,
   WorkspaceRepo,
 } from '@/lib/server/repositories/types';
+import { conversationThreadLink } from '@/lib/chat/thread-link';
 import { canWorkspaceAccessRfp } from '@/lib/server/rfp-access';
 import { emitAfterCommit } from '@/lib/server/notifications/dispatch';
 import { notify, type NotifyChannel } from '@/lib/server/notifications/notify';
@@ -24,7 +24,6 @@ import { presentUserIdsInConversation } from '@/lib/server/realtime/centrifugo';
 import type { Notification } from '@/lib/types/notification';
 import type { WorkspaceType } from '@/lib/types/workspace';
 import type { ServiceResult } from './types';
-import { CHAT_DIGEST_WINDOW_MS, chatDigestBucket } from './_chat-constants';
 import { assertAttachmentClaimed, AttachmentClaimMismatchError } from './_attachment-claim';
 
 export type ChatActor = {
@@ -53,7 +52,6 @@ export class ChatService {
     private readonly userRepo: UserRepo,
     private readonly attRepo: AttachmentRepo,
     private readonly msgRepo: ChatMessageRepo,
-    private readonly notifRepo: NotificationRepo,
     private readonly rfpRepo: RfpRepo,
     private readonly invRepo: InvitationRepo,
   ) {}
@@ -209,19 +207,15 @@ export class ChatService {
       const html = await renderChatMessage({ senderName, preview, conversationUrl });
 
       const digestScheduledAt = chatDigestWindowEnd(now);
-      const inappWindowStart = new Date(chatDigestBucket(now) * CHAT_DIGEST_WINDOW_MS);
+      // 알림 행에는 대화 컬럼이 없다 — 이 링크가 곧 대화 키다(dedupe·읽음 정리·
+      // 토스트 억제가 전부 이걸 본다). 단일 출처는 lib/chat/thread-link.ts.
+      const threadLinkUrl = conversationThreadLink(conv.id);
 
       for (const m of recipients) {
         if (m.userId === actor.userId) continue;
 
-        const channels: NotifyChannel[] = [];
-        const alreadyNotified = await this.notifRepo.hasPendingChatNotification(
-          m.userId,
-          counterpartyWsId,
-          inappWindowStart,
-          tx,
-        );
-        if (!alreadyNotified) channels.push('inapp');
+        // 인앱 행은 메시지별 경계를 보존한다. 이메일만 dedupeKey로 묶는다.
+        const channels: NotifyChannel[] = ['inapp'];
         // 트랜잭션 밖에서 미리 구해 둔 판정 — 여기서 외부 IO 를 하지 않는다.
         if (!presentUserIds.has(m.userId)) channels.push('email');
 
@@ -232,7 +226,8 @@ export class ChatService {
             type: 'chat.message',
             title: `${senderName}님의 새 메시지`,
             body: preview,
-            linkUrl: '/messages',
+            createdAt: now,
+            linkUrl: threadLinkUrl,
             email: {
               event: 'chat.message',
               subject: `[서포트비] ${senderName}님의 새 메시지`,
@@ -327,11 +322,10 @@ export const {
     getUserRepo,
     getAttachmentRepo,
     getChatMessageRepo,
-    getNotificationRepo,
     getRfpRepo,
     getInvitationRepo,
   } = await import('@/lib/server/repositories/factory');
-  const [db, convRepo, wsRepo, userRepo, attRepo, msgRepo, notifRepo, rfpRepo, invRepo] =
+  const [db, convRepo, wsRepo, userRepo, attRepo, msgRepo, rfpRepo, invRepo] =
     await Promise.all([
       getDb(),
       getChatConversationRepo(),
@@ -339,7 +333,6 @@ export const {
       getUserRepo(),
       getAttachmentRepo(),
       getChatMessageRepo(),
-      getNotificationRepo(),
       getRfpRepo(),
       getInvitationRepo(),
     ]);
@@ -350,7 +343,6 @@ export const {
     userRepo,
     attRepo,
     msgRepo,
-    notifRepo,
     rfpRepo,
     invRepo,
   );

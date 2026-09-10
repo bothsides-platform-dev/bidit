@@ -53,6 +53,22 @@ export class DrizzleChatMessageRepository implements ChatMessageRepo {
     return row ?? undefined;
   }
 
+  async findReadBoundary(
+    messageId: string,
+    tx?: Tx,
+  ): Promise<{ conversationId: string; createdAt: Date } | undefined> {
+    const db = this.h(tx);
+    const [row] = await db
+      .select({
+        conversationId: chatMessages.conversationId,
+        createdAt: chatMessages.createdAt,
+      })
+      .from(chatMessages)
+      .where(eq(chatMessages.id, messageId))
+      .limit(1);
+    return row ?? undefined;
+  }
+
   async lastByConversations(
     conversationIds: string[],
     tx?: Tx,

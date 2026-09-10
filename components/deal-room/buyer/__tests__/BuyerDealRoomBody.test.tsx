@@ -33,7 +33,26 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn(), push: 
 
 // 무거운 자식 트리·server-action 정적 임포트(next-auth 체인)는 각자 테스트가 커버 — 목.
 vi.mock('@/components/rfp/comparison/FocusComparison', () => ({
-  FocusComparison: () => <div data-testid="focus-comparison" />,
+  FocusComparison: (p: {
+    bids: unknown[];
+    invitedPgCount?: number;
+    draftPgCount?: number;
+    deadline?: string;
+    canEditInvitations?: boolean;
+    onManageInvitations?: () => void;
+  }) => (
+    <div
+      data-testid="focus-comparison"
+      data-invited-pg-count={p.invitedPgCount}
+      data-draft-pg-count={p.draftPgCount}
+      data-deadline={p.deadline}
+      data-can-edit-invitations={p.canEditInvitations}
+    >
+      {p.bids.length === 0 && p.onManageInvitations && (
+        <button type="button" onClick={p.onManageInvitations}>초대 현황 보기</button>
+      )}
+    </div>
+  ),
 }));
 vi.mock('@/components/rfp/RequestConditionsView', () => ({
   RequestConditionsView: () => <div data-testid="request-conditions" />,
@@ -113,8 +132,7 @@ function buildData(over?: Partial<BuyerRfpDetailData>): BuyerRfpDetailData {
     rfpFiles: [],
     companyName: '구매사',
     inviteList: [],
-    pgWsNameMap: {},
-    pgWsLogoUpdatedAtMap: {},
+    pgWsById: {},
     pendingRequests: [],
     canEdit: true,
     authorId: 'u1',
@@ -136,6 +154,87 @@ describe('BuyerDealRoomBody — 소형 화면 레이아웃', () => {
     render(<BuyerDealRoomBody data={buildData()} />);
     // FocusComparison 은 '견적 비교' 탭의 기본 콘텐츠.
     expect(screen.getByTestId('focus-comparison')).toBeInTheDocument();
+  });
+});
+
+describe('BuyerDealRoomBody — 빈 견적 상태의 정보 구조', () => {
+  const inviteList: BuyerRfpDetailData['inviteList'] = [
+    {
+      ws: { id: 'pg-1', name: '토스페이먼츠', type: 'pg', logoUpdatedAt: null },
+      status: 'sent',
+    },
+    {
+      ws: { id: 'pg-2', name: 'KG이니시스', type: 'pg', logoUpdatedAt: null },
+      status: 'opened',
+    },
+  ];
+
+  it('초대 수와 마감을 빈 상태에 전달하고 CTA로 PG 관리 탭을 연다', async () => {
+    const user = userEvent.setup();
+    render(<BuyerDealRoomBody data={buildData({ bids: [], inviteList })} />);
+
+    const comparison = screen.getByTestId('focus-comparison');
+    expect(comparison).toHaveAttribute('data-invited-pg-count', '2');
+    expect(comparison).toHaveAttribute('data-draft-pg-count', '0');
+    expect(comparison).toHaveAttribute('data-deadline', baseRfp.deadline);
+    expect(comparison).toHaveAttribute('data-can-edit-invitations', 'true');
+
+    await user.click(screen.getByRole('button', { name: '초대 현황 보기' }));
+    expect(screen.getByRole('tab', { name: 'PG 관리' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('invite-manager')).toBeInTheDocument();
+  });
+
+  it('발송한 초대와 아직 발송하지 않은 PG를 나눠 전달한다', () => {
+    render(
+      <BuyerDealRoomBody
+        data={buildData({
+          bids: [],
+          inviteList: [
+            inviteList[0],
+            {
+              ws: { id: 'pg-draft', name: '발송 대기 PG', type: 'pg', logoUpdatedAt: null },
+              status: 'draft',
+            },
+          ],
+        })}
+      />,
+    );
+
+    expect(screen.getByTestId('focus-comparison')).toHaveAttribute('data-invited-pg-count', '1');
+    expect(screen.getByTestId('focus-comparison')).toHaveAttribute('data-draft-pg-count', '1');
+  });
+
+  it('상단 탭과 겹치는 콘텐츠 이동 버튼은 작업 레일에 두지 않는다', () => {
+    render(<BuyerDealRoomBody data={buildData({ bids: [], inviteList })} />);
+
+    expect(screen.queryByRole('button', { name: 'PG 관리' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '요청 조건' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '첨부' })).not.toBeInTheDocument();
+  });
+
+  it('견적이 없을 때는 아직 실행할 수 없는 선정과 재요청을 작업 레일에서 감춘다', () => {
+    render(<BuyerDealRoomBody data={buildData({ bids: [], inviteList })} />);
+
+    expect(screen.queryByRole('button', { name: '선정' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '재요청' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '마감' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: '취소' })).toBeEnabled();
+  });
+
+  it('견적이 있으면 선정과 재요청 작업을 유지한다', () => {
+    render(<BuyerDealRoomBody data={buildData()} />);
+
+    expect(screen.getByRole('button', { name: '선정' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '재요청' })).toBeEnabled();
+  });
+
+  it('편집할 수 없는 상태를 빈 견적 화면에 전달한다', () => {
+    render(<BuyerDealRoomBody data={buildData({ bids: [], canEdit: false })} />);
+
+    expect(screen.getByTestId('focus-comparison')).toHaveAttribute(
+      'data-can-edit-invitations',
+      'false',
+    );
   });
 });
 

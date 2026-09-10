@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation';
 
 import { getOrCreateConversationAction } from '@/lib/server/actions/chat/getOrCreateConversationAction';
 import { captureActionError } from '@/lib/observability/capture';
+import { conversationThreadLink } from '@/lib/chat/thread-link';
 
 export function useStartConversation() {
   const router = useRouter();
@@ -21,7 +22,7 @@ export function useStartConversation() {
     try {
       const r = await getOrCreateConversationAction(counterpartyWsId);
       if (r.ok) {
-        router.push(`/messages?c=${r.conversationId}`);
+        router.push(conversationThreadLink(r.conversationId));
         return;
       }
     } catch (err) {

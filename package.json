@@ -1,6 +1,6 @@
 {
   "name": "supporter-b",
-  "version": "0.9.0",
+  "version": "0.11.1",
   "private": true,
   "engines": {
     "node": ">=22"
@@ -33,9 +33,6 @@
     "@axiomhq/pino": "^1.6.1",
     "@base-ui/react": "^1.4.1",
     "@channel.io/channel-web-sdk-loader": "^2.0.2",
-    "@dnd-kit/core": "^6.3.1",
-    "@dnd-kit/sortable": "^10.0.0",
-    "@dnd-kit/utilities": "^3.2.2",
     "@next/third-parties": "^16.2.7",
     "@pdf-lib/fontkit": "^1.1.1",
     "@radix-ui/react-popover": "^1.1.15",

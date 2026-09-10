@@ -111,12 +111,18 @@ v0.4.34.0 이 `saveQuoteTemplateAction` 에 `settleLimit > 0` 을 걸었지만 �
 
 닫는 법: `bizProfileMode:'override'` 를 `resolveBizProfileForWrite` 로 태우고(설정 경로와 동일), 건별 오버라이드에도 admin 게이트가 필요한지 제품 판단. 의도적으로 열어 두기로 한다면 THREAT_MODEL.md 에 수용 리스크로 명문화해야 한다 — 지금은 두 경로의 비대칭이 어디에도 기록돼 있지 않다. (발견: /ship security 전문가 리뷰 2026-07-29, v0.4.34.0)
 
-### 마스터 면제가 게이트마다 다르고 어디에도 정책이 적혀 있지 않다 (P3)
+### ~~마스터 면제가 게이트마다 다르고 어디에도 정책이 적혀 있지 않다 (P3)~~ — 해결 (v0.10.0.0)
+운영계정이 선택한 모든 워크스페이스에서 이름 변경 요청·멤버 초대/재발송/취소·역할 변경·내보내기와 활동 기록 조회를 할 수 있도록 정책을 확정했다. 멤버 관리 쓰기 경계는 `WorkspaceService.workspaceManagementAccess`에 모았고, 세션 플래그 대신 DB의 현재 이메일을 `MASTER_ACCOUNT_EMAILS` allowlist와 다시 대조한다. 액션은 화면의 `workspaceId`와 현재 세션 대상을 비교해 오래 열린 탭이 다른 워크스페이스를 바꾸지 못하게 한다. 운영계정도 마지막 승인 admin을 없앨 수 없으며, 운영 권한은 감사 로그에 사건 당시 값으로 남는다. 기술 규범은 CLAUDE.md, 화면 계약은 SCREEN_DESIGN.md, 신뢰 경계 포인터는 `docs/THREAT_MODEL.md`에 기록했다.
+
+<details><summary>원문</summary>
+
 `isApprovedAdmin` 은 10곳 넘게 불리는데 **마스터가 그것을 우회하는지가 곳마다 다르다.** 면제 있음: 로고 라우트(`guardWrite`)·`updateWorkspaceBizProfileAction`·`requestWorkspaceNameChangeAction`·설정 페이지의 `canEditWorkspace`. 면제 없음: `listAuditLogsAction`·`settings/audit-log/page.tsx`·`lib/server/services/workspace.ts` 의 초대·제거·역할변경 등 다섯 게이트.
 
 결과적으로 **마스터는 로고·사업자번호를 바꾸고 워크스페이스 이름 변경을 요청할 수 있지만, 멤버를 초대·제거하거나 역할을 바꾸거나 감사 로그를 볼 수 없다.** 그게 의도인지 사고인지 코드 어디에도 적혀 있지 않다 — 지금은 각 호출부의 유무로만 표현된다.
 
 닫는 법: `lib/auth/pg-membership-gate.ts` 선례(하나의 술어 + 두 호출부로도 독립 모듈을 만들고 모듈 헤더에 마스터 면제 근거를 적었다)를 따라 `requireApprovedWorkspaceAdmin(userId, workspaceId, email)` 를 `lib/auth/` 에 뽑고, **같은 변경에서 현재 면제 없는 일곱 게이트의 마스터 정책을 결정한다**(가드 테스트로 고정). 이건 authz 행동 변경이라 P2 로고 픽스 안에 넣을 수 없어 분리했다. 이 항목은 아래 P4(에러 코드 이름)를 포함한다 — 한 헬퍼로 모으면 코드 이름도 자연히 하나가 된다. (발견: /ship maintainability 리뷰 2026-07-30, v0.4.35.0)
+
+</details>
 
 ### 워크스페이스 정체성 쓰기 경로가 워크스페이스 status 를 보지 않는다 (P3, 선존재)
 로고 라우트·`updateWorkspaceBizProfileAction` 두 경로는 **멤버 승인 상태만** 보고 워크스페이스 자체의 `status`(pending/suspended)는 보지 않는다. 이름 변경 요청은 v0.6.1.0 에서 트랜잭션 안의 active 조회를 거치도록 고쳐 이 항목에서 빠졌다. 남은 두 경로 때문에 **정지된 워크스페이스의 승인 admin 도 로고를 올리고 지울 수 있다.** 로고 GET 은 비인증 공개 + `Cache-Control: public, max-age=31536000, immutable` 이라, 앱 origin 의 안정적 URL 로 임의 PNG/JPEG 를 계속 서빙할 수 있다(sniff 검증이 SVG/XSS 는 막는다). 셸 가드(`resolveShellAccess`)는 RSC 렌더만 막고 이 라우트는 지나지 않는다.
@@ -169,6 +175,13 @@ v0.4.35.0 부터 이 차이가 **사용자에게 보인다**: `WorkspaceLogoForm
 ### 승인/거절 알림 미배선 (P3)
 `workspace.approved/rejected`, `rfp.sent`, `membership.approved/rejected` 템플릿·outbox enum은 존재하지만 어디서도 발송하지 않는다. 승인 액션 자체는 admin 별도 레포(`admin-supporter-b`) 소관이라 발송 지점을 어느 레포에 둘지 경계 결정 필요. 관련: master/ops 멤버십 row를 admin 레포가 직접 insert하면서 `approval_status`를 명시적으로 non-approved로 쓰는 곳이 없는지 1줄 확인 필요(있다면 v0.2.75.1의 approved 필터로 master가 조용히 수신 중단됨). (발견: 알림 시스템 전수 조사 + /ship 적대 리뷰 2026-07-07)
 
+### `notifications` 가 운영에서 실제로 파티션돼 있는지 미확인 (P3)
+`lib/db/schema/notifications.ts` 상단 주석은 "RANGE-partitioned by created_at (0000 migration: 월별 자식 + DEFAULT)" 라고 적어 두었지만, **그 마이그레이션 폴더는 더 이상 없다** — 프로젝트가 push-only 로 옮기면서 DDL 은 `lib/db/schema-ddl.ts` 가 Drizzle 스키마에서 생성하고, `generateMigration` 은 `PARTITION BY RANGE` 를 못 뱉는다. 그래서 **단위·e2e 는 확실히 평범한 테이블**이고, 운영은 옛 0000 이 만든 파티션 테이블이 그대로 남아 있을 가능성이 높지만 확인되지 않았다.
+
+두 가지가 여기에 걸려 있다: ① `markChatThreadRead` 의 `MARK_READ_LOOKBACK_DAYS` (90일) 하한은 **파티션이 있다는 전제**로 넣은 것이다 — 없으면 불필요한 제약이고, 90일 지난 안 읽은 알림이 안 걷히는 대가만 남는다. ② 파티션이 있다면 **어떤 테스트도 프루닝 회귀를 잡을 수 없다**(테스트 DB 가 파티션돼 있지 않으므로).
+
+닫는 법: 운영에서 `SELECT relkind FROM pg_class WHERE relname='notifications';` 한 줄(`p`=파티션, `r`=평범). `r` 이면 하한을 지우고 스키마 주석을 고친다. `p` 면 주석에 "DDL 은 schema-ddl.ts 가 아니라 운영 DB 에만 있다"를 명시하고, 하한 없는 형제 쿼리(`markAllRead`)도 같은 눈으로 본다. (발견: /ship 성능 리뷰 2026-09-08, v0.9.3.0 — 사용자가 확인 없이 하한 추가를 선택)
+
 ### 알림 소소한 정합성 묶음 (P4)
 ① 알림 페이지 RSC는 100건, 훅 스토어(`useNotifications`)는 API 50건 하이드레이트 — 51~100번째 항목에서 배지/읽음 처리 불일치 가능. ② 인앱 알림 row는 `pending→read`만 전이하는데 렌더러(`NotificationActivityList`)와 `unreadCount`에 도달 불가능한 `sent`/`failed` 분기가 남아 있음. ~~빨간색 미읽음 렌더~~ — 색·라벨은 해결 (v0.5.5.1: 도달 가능한 `pending` 칩이 `warning`/`대기` → `primary`/`안 읽음`, `sent` 도 같은 값). 분기 자체의 도달 불가능성은 미해결이며, **`sent` 를 쓰는 테스트는 화면을 보장하지 않는다**는 점에 주의(그래서 `pending` 픽스처 테스트를 따로 뒀다). ⑤ `WorkspaceSwitcher` 드롭다운 미읽음 점에 접근 가능한 이름이 없음 — `ConversationList` 처럼 `sr-only` 라벨 필요(발견: /ship 리뷰 2026-09-04). ③ 알림 `type`이 free-form text로 SSOT enum이 없고 렌더러에 타입별 라벨/아이콘 매핑도 없음. ④ `retryEmail`은 서비스·액션·훅·테스트 완비 + requeue/화이트리스트 결함도 해소(v0.4.20.x)됐지만 여전히 UI 호출 지점 0인 데드코드 — 배선 여부는 별도 결정(2026-07-07 보류). (발견: 알림 시스템 전수 조사 2026-07-07)
 
@@ -176,6 +189,16 @@ v0.4.35.0 부터 이 차이가 **사용자에게 보인다**: `WorkspaceLogoForm
 
 ### 선정 후 구매사 담당자(createdBy) 탈퇴 시 승자 PG가 빈 딜룸 (P3)
 선정 연락처 교환(`CounterpartyContactCard`)은 `findContactById`가 fail-closed라, 구매사 담당자(RFP `createdBy`)가 탈퇴/시스템계정이면 `buyerContact=null`이 된다. 승자 PG 분기는 `awardedToMe && buyerContact`로 카드를, `awarded && !awardedToMe`로 미선정 안내를 그리므로 — 승자인데 buyerContact만 null이면 카드도 안내도 안 떠 빈 화면이 된다(드묾·누출 아님·정상 fail-closed). 후속: 연락처 없음 안내 폴백 또는 워크스페이스 대표 담당자 폴백 검토. (발견: /ship 적대 리뷰 2026-06-27)
+
+### `WorkspaceAvatar.workspaceId` 는 아직 optional — 로고 누락의 남은 한 축 (P4)
+v0.9.x 에서 `logoUpdatedAt` 을 필수로 올려 "배선을 잊음"과 "로고 없음"을 구분되게 만들었지만
+(`Counterparty`·`WorkspaceAvatar`), 같은 컴포넌트의 `workspaceId` 는 여전히 optional 이다.
+img 분기는 **둘 다** 있어야 켜지므로, 로고 버전만 넘기고 id 를 빠뜨리면 똑같이 조용히
+이니셜로 떨어진다. 현재 실피해는 없다 — 호출부 전수(7/7)가 id 를 넘긴다. 닫지 않은 이유는
+`workspaceId` 없는 "이니셜 전용 아바타"가 의도된 용법이고(`WorkspaceAvatar.test.tsx` 가
+그 분기를 명시적으로 검증한다) 그것까지 없애려면 props 를 `WorkspaceDisplay` 하나 또는
+`{name}` 유니온으로 바꿔야 해서, 이번 변경의 범위를 넘는다. 닫는 법 후보: prop 을
+`identity: WorkspaceDisplay | { name: string }` 판별 유니온으로. (발견: 로고 누락 구조 수정 작업)
 
 ## Settings / Account
 
@@ -186,10 +209,10 @@ v0.4.34.0 이 `app/(app)/settings/profile/page.tsx` 의 `canEditWorkspace` 를 r
 
 액션 레벨 게이트는 세 곳 모두 양쪽 축이 커버돼 있으므로(실제 권한 상승은 서버에서 막힌다) 이건 **어포던스 회귀** 위험이다 — 미승인 admin 이 버튼을 보고 눌렀다가 거부당하는 막다른 길. 닫는 법: 저 스펙에 `approval_status` 토글을 추가한다. (발견: /ship testing·coverage 리뷰 2026-07-30, v0.4.35.0 — Playwright 검증에 시드된 :5433 DB + 서버가 필요해 이번 컷에서는 미작성)
 
-### admin-or-master 게이트가 네 곳에 손으로 복제됐다 (P3)
-`isMasterEmail` 면제 + `getMembership`→`isApprovedAdmin` 조합이 네 곳에 같은 모양으로 적혀 있다: `app/api/workspace/[id]/avatar/route.ts` 의 `guardWrite`, `updateWorkspaceBizProfileAction`, `requestWorkspaceNameChangeAction`, 그리고 `settings/profile/page.tsx` 의 `canEditWorkspace`. 넷이 갈리면 권한 판정이 표면별로 달라진다 — 실제로 v0.4.34.0 이 옛 `renameWorkspaceAction` 의 마스터 면제를 빼먹어 v0.4.35.0 에서 따라잡았고, 그게 이 중복이 만드는 결함 모양이다.
+### admin-or-master 게이트가 여러 표면에 손으로 복제됐다 (P3)
+v0.10.0.0에서 멤버 관리 쓰기들은 `WorkspaceService.workspaceManagementAccess` 한 곳으로 모였고 이름 변경 요청도 이 경계를 지난다. 그러나 `isMasterEmail` 면제 + `getMembership`→`isApprovedAdmin` 조합은 여전히 프로필 페이지의 `canEditWorkspace`, 로고 라우트 `guardWrite`, `updateWorkspaceBizProfileAction`, 활동 기록 페이지·액션에 각각 남아 있다. 이들이 갈리면 운영계정이 화면은 열지만 다음 페이지를 못 읽거나, UI는 막는데 서버는 허용하는 식으로 표면별 권한이 달라진다.
 
-닫는 법: `lib/auth/active-workspace.ts` 에 `isApprovedAdminOrMaster(userId, workspaceId, email)` 를 두고 네 호출처가 그것만 부른다. 권한 경계 네 곳을 동시에 건드리는 리팩터라 릴리스 컷에 섞지 않았다. (발견: /ship maintainability 리뷰 2026-07-30, v0.4.35.0)
+닫는 법: `lib/auth/active-workspace.ts` 에 `isApprovedAdminOrMaster(userId, workspaceId, email)` 를 두고 남은 호출처가 그것만 부른다. 서비스 내부의 DB 이메일 재조회 규칙까지 같은 헬퍼가 안전하게 표현할 수 있는지 먼저 정하고, 아니라면 UI/읽기 게이트용 헬퍼와 쓰기 서비스 경계를 명시적으로 나눈다. (발견: /ship maintainability 리뷰 2026-07-30, v0.4.35.0; 범위 갱신 v0.10.0.0)
 
 ### 설정 패널의 `ERROR_LABELS` 맵이 폼마다 따로 있다 (P4)
 `WorkspaceLogoForm`·`WorkspaceBizNoForm`·`WorkspaceNameForm` 이 각자 `ERROR_LABELS` 를 들고 있고, `FORBIDDEN_NOT_ADMIN` 문구는 앞의 두 파일에 바이트 단위로 같은 문자열이 복제돼 있다. 조회 **판정**은 v0.4.35.0 에서 `lib/utils/error-label.ts` 단일 출처로 모았지만 **문구 맵** 자체는 아직 셋이다. `lib/quote/error-messages.ts` 가 이미 쓰는 모양(코드→한국어 단일 맵)을 설정 패널에도 적용하면 된다. (발견: /ship maintainability 리뷰 2026-07-30, v0.4.35.0)
@@ -934,7 +957,7 @@ v0.4.42.1 을 main 으로 컷하는 과정의 독립 적대 리뷰가 세 가지
 
 **해결(v0.4.47.0)**: 프레즌스를 트랜잭션 진입 전으로 옮기고, **대화당 1회**로 줄였다. 두 번째가 핵심이다 — Centrifugo `presence` 응답은 애초에 채널 전체 클라이언트 목록이라, 수신자마다 부르면 같은 페이로드를 N번 받아 1비트씩만 쓰고 버리는 구조였다(트랜잭션 밖으로 뺀 1차 수정만으로는 N 직렬이 N 병렬이 됐을 뿐 횟수는 그대로였다). `presentUserIdsInConversation(convId): Set<userId>` 가 새 진입점이고 `isUserPresentInConversation` 은 그 위의 얇은 래퍼로 남아 digest flush 가 계속 쓴다. 첫 메시지(대화 행이 아직 없음)에는 아예 호출하지 않는다 — 채널이 `chatChannel(conversationId)` 로 파생되는데 그 UUID 가 트랜잭션 안에서 만들어져 아무도 구독할 수 없으므로 반드시 false 다.
 
-**남은 것 (P3)**: 같은 루프의 `hasPendingChatNotification` 이 여전히 수신자당 1쿼리다(`IN (...)` 배치 대상). `team-chat.ts` 는 수신자당 `hasPendingTeamNotification` + `hasPendingTeamMentionNotification` 2회라 더 심하고, **프레즌스 이관도 안 됐다** — 팀 채팅 경로는 손대지 않았다. `NotificationRepo` 에 `hasPendingFor(userIds[])` 배치 메서드를 추가하면 양쪽이 함께 접힌다.
+**남은 것 (P3)**: `team-chat.ts` 의 이메일 다이제스트 게이트는 수신자당 `hasPendingTeamNotification` + `hasPendingTeamMentionNotification` 2회를 직렬로 수행한다. 인앱 알림은 v0.11.1.3에서 메시지별 읽음 경계를 보존하도록 윈도 중복 제거를 쓰지 않게 됐고, 남은 두 쿼리는 **이메일만** 묶기 위한 것이다. 수신자 배치 판정으로 접힐 수 있다. 팀 채팅 프레즌스 이관은 아직 안 됐다.
 
 ### ~~`approvedMemberRecipients` 를 같은 tx·같은 인자로 두 번 부른다 (P4)~~ — 해결 (v0.4.47.0)
 `RfpService.createRfp` 가 PG 워크스페이스마다(이메일 팬아웃 / 인앱 팬아웃) 같은 조회를 두 번 했다. `acceptPgRequest` 도 같은 모양이었고 첫 호출이 `if` 블록 안이라 조건 밖으로 끌어올렸다(인앱 팬아웃은 무조건 나간다). 호출 횟수 가드 테스트 동반.
@@ -966,7 +989,7 @@ v0.4.42.1 을 main 으로 컷하는 과정의 독립 적대 리뷰가 세 가지
 - `outbox/{chat,team-chat}-digest-flush.ts` — 엔트리당 `markResult`. 배치 상한 있음
 - `workspace.ts` `listMembershipsWithMembers` — 사용자 소속 워크스페이스 수(보통 1~3)
 - `workspace.ts` 워크스페이스 생성 시 초기 멤버 insert — 1회성
-- `services/{chat,team-chat}.ts` digest 루프 — 수신자당 `hasPending*Notification` 1쿼리. **수신자별 게이팅이라 `notify()` 배치화로 접을 수 없다** — 접으려면 그 판정을 배치 조회로 먼저 바꿔야 한다
+- `services/team-chat.ts` 이메일 digest 루프 — 수신자당 `hasPendingTeamNotification` + `hasPendingTeamMentionNotification` 2쿼리. **수신자별 게이팅이라 `notify()` 배치화로 접을 수 없다** — 접으려면 그 판정을 배치 조회로 먼저 바꿔야 한다
 - `rfp.ts` 초대 draft/승격·재요청 루프 — PG 수 상한
 
 ### RFP 발송 초대 팬아웃이 트랜잭션 안에서 PG마다 이메일을 렌더링한다 (P3)
@@ -1026,7 +1049,7 @@ v0.4.44.0 이 `LOADING…` 을 전면 한국어화(`처리 중…`/`불러오는
 `WorkspaceSwitcher` 의 타입 Chip 이 `group-data-[collapsible=icon]:hidden` 이고 접힘 트리거에는 툴팁이 없다. buyer·PG 워크스페이스를 둘 다 가진 사용자는 48px 모드에서 아바타만 보고 자기가 어느 쪽에 있는지 판단해야 한다. 실제 위험은 처음 본 것보다 작다(아바타가 워크스페이스별로 다르고 하위 nav 도 `견적 요청` vs `받은 견적 요청` 으로 갈린다) — 그래서 P4. 고치려면 `useSidebar()` 결합 + 툴팁이 필요한데, `WorkspaceSwitcher.test.tsx` 가 `SidebarProvider` 없이 `div[data-collapsible]` 목으로만 도는 하네스라 테스트 재작성이 함께 든다. (발견: /frontend-design 사이드바 리뷰 2026-07-29)
 
 ### 전역 `keep-all` 이후 좁은 flex/grid 트랙 실측 스윕 미완 (P3)
-`word-break: keep-all` 은 한글 텍스트 런의 **min-content 폭**을 1글자에서 가장 긴 어절로 올린다. 짝인 `overflow-wrap: break-word` 는 (CSS Text 3 상) soft-wrap 기회가 min-content 계산에서 제외되므로 그 증가를 상쇄하지 **않는다** — `min-width:auto` 에 기대는 flex/grid 아이템(`min-w-0` 없는 행·칸반 카드·테이블 셀·칩)은 좁은 뷰포트에서 줄바꿈 대신 트랙을 밀어낼 수 있다. 라이트/다크 데스크톱과 랜딩은 실측했고 문제 없었지만, **360px 폭에서 밀도 높은 면(칸반 보드·사이드바·딜룸 탭·비교표)은 미실측**이다. 넘치는 곳은 `min-w-0` 추가 또는 국소 `break-normal`. (발견: /ship performance 리뷰 2026-07-29)
+`word-break: keep-all` 은 한글 텍스트 런의 **min-content 폭**을 1글자에서 가장 긴 어절로 올린다. 짝인 `overflow-wrap: break-word` 는 (CSS Text 3 상) soft-wrap 기회가 min-content 계산에서 제외되므로 그 증가를 상쇄하지 **않는다** — `min-width:auto` 에 기대는 flex/grid 아이템(`min-w-0` 없는 행·테이블 셀·칩)은 좁은 뷰포트에서 줄바꿈 대신 트랙을 밀어낼 수 있다. 라이트/다크 데스크톱과 랜딩은 실측했고 문제 없었지만, **360px 폭에서 밀도 높은 면(사이드바·딜룸 탭·비교표)은 미실측**이다. 넘치는 곳은 `min-w-0` 추가 또는 국소 `break-normal`. (발견: /ship performance 리뷰 2026-07-29)
 
 ### 스노우싸인 임베드 iframe 하드닝 — sandbox 는 해결, `frame-src` CSP 는 미해결 (P2)
 **sandbox·referrerPolicy 는 해결 (v0.4.37.0)**: 임베드가 `/signing-templates` 에서 딜룸 계약 탭(`SigningSendEmbed`)으로 옮겨오면서 `sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-popups-to-escape-sandbox allow-downloads allow-modals"`(top-navigation 계열 의도적 제외) + `referrerPolicy="no-referrer"` 를 걸었다. 이로써 침해된 임베드가 흐름 도중 최상위를 피싱 페이지로 돌리는 벡터는 닫혔다. **다만 이 권한 집합은 실 스노우싸인이 무엇을 요구하는지 모르는 채 정한 추정치다** — 실 스모크(Q1)에서 임베드가 깨지면 필요한 것만 되열어야 한다.
@@ -1206,6 +1229,32 @@ PG 가입 플로우도 `BizLookupField` 를 사용하며 현재 `blockedStatuses
 v0.4.54.0 이 `verifyEmailAction` 의 **reject** 를 잡아 오류 화면 + 다시 시도로 바꿨지만, 탈출 조건이 "프로미스가 settle 됐다" 하나뿐이다. 요청이 거절되지도 응답하지도 않고 **매달려 있으면**(연결은 수립됐는데 응답을 안 주는 캡티브 포털·중간 프록시) `state` 는 `'loading'` 에 머물고 원래 증상인 무한 스피너가 그대로 재현된다 — `app/(public)/auth/verify/page.tsx` 의 마운트 효과(:38-54)와 `retry`(:59-72) 어느 쪽에도 `AbortController`·`Promise.race`·타임아웃이 없다. 끊긴 연결은 보통 reject 로 떨어져 이미 닫힌 경로라 남은 트리거는 이 "블랙홀" 한 종류뿐이고, 그래서 P4 다. 닫는 법은 두 호출부를 공통 타임아웃으로 감싸 만료 시 `network_error` 로 보내는 것인데, **몇 초로 할지가 제품 판단**이라 값 없이 넣지 않았다(짧으면 느린 모바일에서 멀쩡한 인증을 죽인다). (발견: /ship 컷 감사 adversarial 2026-08-13, v0.4.54.0)
 
 ## Workspace / Members
+
+### 워크스페이스 로고 신선도에 출처가 둘이다 — 같은 화면에서 어긋날 수 있다 (P3)
+`logoUpdatedAt` 을 읽는 경로가 두 갈래다. **컬럼**(`workspaces.logo_updated_at`)을 읽는 쪽이
+다수파이고(`getDisplayInfo`·`findDisplayInfoByIds`·`search`·`listCanonicalPgWorkspaces`),
+**블롭 테이블**(`workspace_logo_blobs.updated_at`)을 조회하는 쪽은 `findById` 하나다
+(`lib/server/repositories/drizzle/workspace.ts` 의 별도 SELECT). 쓰기는
+`app/api/workspace/[id]/avatar/route.ts` 가 **트랜잭션 없이 두 문장으로** 한다 —
+`logoRepo.upsert()` 다음 `setLogoUpdatedAt()`, 삭제는 `remove()` 다음 `setLogoUpdatedAt(null)`.
+둘 사이에서 실패하면 두 출처가 갈린다.
+
+**이 갈라짐 자체는 선존재**지만, 로고 신원 수정(v0.9.2.0)이 PG 딜룸 로더를 `findById` →
+`getDisplayInfo` 로 옮기면서 **한 화면 안의 불일치**를 새로 만들었다: PG 딜룸은
+`RfpBriefPanel`/`BidContextStrip`(이제 컬럼)과 채팅 레일(`conversationLoaders.ts` 의
+`loadConversationThread` → 여전히 `findById`, 블롭)이 **같은 구매사 워크스페이스**를 나란히
+그린다. 그 전에는 둘 다 `findById` 라 항상 일치했다. 부분 실패 후 사용자는 브리프에는
+이니셜, 바로 옆 채팅에는 로고를 보게 된다.
+
+되돌리지 않은 이유: 컬럼이 다수파 출처이고 `findById` 가 예외다(게다가 `findById` 는
+멤버·bizProfile 까지 하이드레이트하는 무거운 조회다). 방향은 컬럼이 맞다.
+
+닫는 법(둘 중 하나, 둘 다 이 PR 범위 밖):
+① **쓰기를 원자화** — 근본 원인. 단 API 라우트에서 `getDb()` 를 부르면 repo-boundary 가드에
+   걸리므로(`lib/server/services/**` 밖 호출 금지) 로고 쓰기를 서비스로 올려야 한다.
+② **읽기를 통일** — `conversationLoaders.ts` 의 남은 `findById` 로고 소비처를
+   `getDisplayInfo`/`findDisplayInfoByIds` 로 옮긴다. 더 좁지만 ①을 남긴다.
+①이 원인에 가깝다. (발견: v0.9.2.0 /ship red-team 리뷰)
 
 ### 워크스페이스 정렬 변경이 chat.ts/shell-access.ts의 순서 의존 로직에 준 부수효과 (P4)
 사이드바 워크스페이스 스위처 드랍다운을 PG우선+이름순으로 정렬하려고 `WorkspaceRepo.listForUser`/`listAllWorkspacesForMaster`의 `ORDER BY`를 리포지토리 레이어에서 바꿨다(v0.4.28.2). 이 두 메서드 결과가 표시 목적 외에도 쓰이는 곳이 있다: ① `chat.ts`의 `counterpartyEmail`로 채팅을 시작하는 경로가 `memberships.find(m => m.type === wantType)`로 첫 매칭 워크스페이스를 고르는데, 동일 타입 멤버십이 여러 개인 유저는 이제 가입순 대신 이름순으로 뽑힌다. ② `shell-access.ts`의 `workspaces.find(...) ?? workspaces[0]` fallback(세션의 workspaceId가 현재 멤버십 목록에 없는 드문 경우)도 동일하게 영향받는다. 두 경우 모두 동일 타입 멤버십이 여러 개인 유저에게만 해당하는 좁은 엣지 케이스라 리스크를 감수하고 그대로 배포하기로 결정(/ship 적대 리뷰에서 발견, 사용자 확인 후 수용). 후속: 필요해지면 정렬을 리포지토리 레이어 대신 WorkspaceSwitcher 클라이언트 쪽으로 옮겨 두 소비처의 원래 순서 의미를 보존. (발견: /ship 적대 리뷰 2026-07-29)

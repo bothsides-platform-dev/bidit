@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ResponsePromise } from 'ky'
+import type { Notification } from '@/lib/types/notification'
 
 // Static mocks — these run before module loading
 vi.mock('@/lib/http', () => ({
@@ -84,6 +85,46 @@ describe('useNotifications — loadHistory', () => {
     })
 
     expect(result.current.status).toBe('error')
+  })
+
+  it('읽음 처리 뒤 늦게 끝난 history 응답이 배지를 되살리지 않는다', async () => {
+    let resolveHistory: (value: { notifications: unknown[] }) => void = () => {}
+    const history = new Promise<{ notifications: unknown[] }>((resolve) => {
+      resolveHistory = resolve
+    })
+    const { http } = await import('@/lib/http')
+    vi.mocked(http.get).mockReturnValue({ json: () => history } as unknown as ResponsePromise)
+
+    const { renderHook, act } = await import('@testing-library/react')
+    const {
+      markThreadReadLocal,
+      useNotifications,
+      useNotificationStoreForTest,
+    } = await import('@/lib/hooks/useNotifications')
+    renderHook(() => useNotifications('ws-1'))
+
+    act(() => {
+      markThreadReadLocal('/messages?c=conv-late-history', '2026-09-10T12:00:00.000Z')
+    })
+    await act(async () => {
+      resolveHistory({
+        notifications: [{
+          id: 'history-late',
+          userId: 'u-1',
+          workspaceId: 'ws-1',
+          type: 'chat.message',
+          title: '이미 본 메시지',
+          body: '',
+          channel: 'inapp',
+          status: 'pending',
+          linkUrl: '/messages?c=conv-late-history',
+          createdAt: '2026-09-10T00:00:00.000Z',
+        }],
+      })
+      await Promise.resolve()
+    })
+
+    expect(useNotificationStoreForTest.getState().notifications[0]?.status).toBe('read')
   })
 })
 
@@ -313,6 +354,140 @@ describe('useNotifications — 라이브 알림 도착 시 toast', () => {
     })
 
     expect(toast).not.toHaveBeenCalled()
+  })
+
+  it('열린 스레드도 라이브 publish 성공을 증명할 수 없으므로 toast 한다', async () => {
+    const { toast } = await import('@/lib/toast')
+    const { act } = await setupHook()
+
+    await act(async () => {
+      EventSourceStub.latest?.onmessage?.(
+        new MessageEvent('message', {
+          data: JSON.stringify({
+            ...(makeNotif('n-open', '보고 있는 대화 메시지') as object),
+            type: 'chat.message',
+            linkUrl: '/messages?c=conv-open',
+          }),
+        }),
+      )
+    })
+
+    expect(toast).toHaveBeenCalledWith('보고 있는 대화 메시지')
+  })
+
+  it('스레드를 읽으면 그 스레드 알림만 로컬에서도 읽음으로 내린다(배지)', async () => {
+    const { act } = await setupHook()
+    const { markThreadReadLocal, useNotificationStoreForTest } = await import(
+      '@/lib/hooks/useNotifications'
+    )
+
+    const fire = async (id: string, link: string) => {
+      await act(async () => {
+        EventSourceStub.latest?.onmessage?.(
+          new MessageEvent('message', {
+            data: JSON.stringify({
+              ...(makeNotif(id, '메시지') as object),
+              type: 'chat.message',
+              linkUrl: link,
+            }),
+          }),
+        )
+      })
+    }
+    await fire('n-here', '/messages?c=conv-here')
+    await fire('n-there', '/messages?c=conv-there')
+
+    await act(async () => {
+      markThreadReadLocal('/messages?c=conv-here', new Date().toISOString())
+    })
+
+    const byId = new Map(
+      useNotificationStoreForTest
+        .getState()
+        .notifications.map((n) => [n.id, n.status]),
+    )
+    expect(byId.get('n-here')).toBe('read')
+    expect(byId.get('n-there')).toBe('sent')
+  })
+
+  it('읽음 처리 뒤 늦게 도착한 SSE 알림이 배지를 되살리지 않는다', async () => {
+    const { act } = await setupHook()
+    const { markThreadReadLocal, useNotificationStoreForTest } = await import(
+      '@/lib/hooks/useNotifications'
+    )
+
+    act(() => {
+      markThreadReadLocal('/messages?c=conv-late-sse', '2026-09-10T12:00:00.000Z')
+    })
+    await act(async () => {
+      EventSourceStub.latest?.onmessage?.(
+        new MessageEvent('message', {
+          data: JSON.stringify({
+            ...(makeNotif('n-late-sse', '이미 본 메시지') as object),
+            type: 'chat.message',
+            status: 'pending',
+            linkUrl: '/messages?c=conv-late-sse',
+            createdAt: '2026-09-10T00:00:00.000Z',
+          }),
+        }),
+      )
+    })
+
+    expect(useNotificationStoreForTest.getState().notifications[0]?.status).toBe('read')
+  })
+
+  it('읽음 상한보다 늦게 도착한 같은 스레드 알림은 로컬에서 지우지 않는다', async () => {
+    const { act } = await setupHook()
+    const { markThreadReadLocal, useNotificationStoreForTest } = await import(
+      '@/lib/hooks/useNotifications'
+    )
+    const linkUrl = '/messages?c=conv-partial'
+
+    act(() => {
+      useNotificationStoreForTest.getState().setAll([
+        { ...(makeNotif('n-newer', '아직 안 본 메시지') as Notification), linkUrl, createdAt: '2026-09-10T12:01:00.000Z' },
+        { ...(makeNotif('n-older', '이미 본 메시지') as Notification), linkUrl, createdAt: '2026-09-10T11:59:00.000Z' },
+      ])
+      markThreadReadLocal(linkUrl, '2026-09-10T12:00:00.000Z')
+    })
+
+    const byId = new Map(
+      useNotificationStoreForTest.getState().notifications.map((n) => [n.id, n.status]),
+    )
+    expect(byId.get('n-older')).toBe('read')
+    expect(byId.get('n-newer')).toBe('sent')
+  })
+
+  it('이미 읽은 알림은 markThreadReadLocal 이 다시 건드리지 않는다', async () => {
+    // canMarkRead 가드 — 없으면 readAt 이 열람할 때마다 앞으로 밀려
+    // "언제 읽었나"가 마지막 열람 시각으로 덮인다(서버 isNull(readAt) 과 짝).
+    const { act } = await setupHook()
+    const { markThreadReadLocal, useNotificationStoreForTest } = await import(
+      '@/lib/hooks/useNotifications'
+    )
+
+    await act(async () => {
+      EventSourceStub.latest?.onmessage?.(
+        new MessageEvent('message', {
+          data: JSON.stringify({
+            ...(makeNotif('n-done', '이미 읽음') as object),
+            type: 'chat.message',
+            linkUrl: '/messages?c=conv-done',
+            status: 'read',
+            readAt: '2020-01-01T00:00:00.000Z',
+          }),
+        }),
+      )
+    })
+
+    await act(async () => {
+      markThreadReadLocal('/messages?c=conv-done', new Date().toISOString())
+    })
+
+    const row = useNotificationStoreForTest
+      .getState()
+      .notifications.find((n) => n.id === 'n-done')
+    expect(row?.readAt).toBe('2020-01-01T00:00:00.000Z')
   })
 
   it('coalesce 윈도우 내 연속 알림은 toast 를 1회만 발화한다 (F2)', async () => {

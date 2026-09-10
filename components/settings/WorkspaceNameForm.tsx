@@ -12,6 +12,7 @@ import { cn } from '@/lib/utils';
 import { errorLabel } from '@/lib/utils/error-label';
 
 type Props = {
+  workspaceId: string;
   currentName: string;
   canEdit: boolean;
   pendingRequest: { requestedName: string } | null;
@@ -25,9 +26,10 @@ const ERROR_LABELS: Record<string, string> = {
   SAME_NAME: '현재 이름과 다른 이름을 입력해 주세요.',
   ALREADY_PENDING: '이미 확인 중인 이름 변경 요청이 있어요.',
   WORKSPACE_INACTIVE: '현재 워크스페이스에서는 이름 변경을 요청할 수 없어요.',
+  WORKSPACE_CHANGED: '다른 워크스페이스로 전환됐어요. 새로고침 후 다시 시도해 주세요.',
 };
 
-export function WorkspaceNameForm({ currentName, canEdit, pendingRequest, lastRejectedRequest }: Props) {
+export function WorkspaceNameForm({ workspaceId, currentName, canEdit, pendingRequest, lastRejectedRequest }: Props) {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(currentName);
   const [submitting, setSubmitting] = useState(false);
@@ -46,7 +48,7 @@ export function WorkspaceNameForm({ currentName, canEdit, pendingRequest, lastRe
     if (!dirty || submitting) return;
     setSubmitting(true);
     try {
-      const result = await requestWorkspaceNameChangeAction({ name: trimmed });
+      const result = await requestWorkspaceNameChangeAction({ workspaceId, name: trimmed });
       if (!result.ok) {
         toast(errorLabel(ERROR_LABELS, result.error, '요청하지 못했어요. 잠시 후 다시 시도해 주세요.'), { type: 'error' });
         return;

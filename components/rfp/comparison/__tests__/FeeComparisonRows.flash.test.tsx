@@ -2,6 +2,8 @@ import { render, screen } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
 import { FeeComparisonRows } from '../FeeComparisonRows';
 import type { Bid } from '@/lib/types/bid';
+import { wsById } from '@/lib/types/__tests__/_workspace-fixtures';
+
 
 const baseBid: Bid = {
   id: 'b1',
@@ -64,7 +66,7 @@ describe('FeeComparisonRows flash', () => {
         sortedBids={[baseBid]}
         active={baseBid}
         tier="sole"
-        pgWsNameMap={{ pg1: 'PG사' }}
+        pgWsById={wsById({ pg1: 'PG사' })}
         onSelect={vi.fn()}
         flash={true}
       />,
@@ -80,7 +82,7 @@ describe('FeeComparisonRows flash', () => {
         sortedBids={[baseBid]}
         active={baseBid}
         tier="sole"
-        pgWsNameMap={{ pg1: 'PG사' }}
+        pgWsById={wsById({ pg1: 'PG사' })}
         onSelect={vi.fn()}
         flash={false}
       />,
@@ -96,7 +98,7 @@ describe('FeeComparisonRows flash', () => {
         sortedBids={[flatFeeBid]}
         active={flatFeeBid}
         tier="sole"
-        pgWsNameMap={{ pg1: 'PG사' }}
+        pgWsById={wsById({ pg1: 'PG사' })}
         onSelect={vi.fn()}
       />,
     );
@@ -110,7 +112,7 @@ describe('FeeComparisonRows flash', () => {
         sortedBids={[baseBid]}
         active={baseBid}
         tier="sole"
-        pgWsNameMap={{ pg1: 'PG사' }}
+        pgWsById={wsById({ pg1: 'PG사' })}
         onSelect={vi.fn()}
         flash={true}
       />,

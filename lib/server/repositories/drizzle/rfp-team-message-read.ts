@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { rfpTeamMessageReads } from '@/lib/db/schema';
 import type { RfpTeamMessageRead, RfpTeamMessageReadRepo, Tx } from '../types';
 
@@ -15,15 +15,19 @@ export class DrizzleRfpTeamMessageReadRepository implements RfpTeamMessageReadRe
 
   private h(tx?: Tx): Tx { return tx ?? this._db; }
 
-  async upsert(rfpId: string, workspaceId: string, userId: string, at: Date, tx?: Tx): Promise<void> {
+  async upsert(rfpId: string, workspaceId: string, userId: string, at: Date, tx?: Tx): Promise<Date> {
     const db = this.h(tx);
-    await db
+    const [row] = await db
       .insert(rfpTeamMessageReads)
       .values({ rfpId, workspaceId, userId, lastReadAt: at })
       .onConflictDoUpdate({
         target: [rfpTeamMessageReads.rfpId, rfpTeamMessageReads.workspaceId, rfpTeamMessageReads.userId],
-        set: { lastReadAt: at },
-      });
+        set: {
+          lastReadAt: sql`greatest(${rfpTeamMessageReads.lastReadAt}, excluded.last_read_at)`,
+        },
+      })
+      .returning({ lastReadAt: rfpTeamMessageReads.lastReadAt });
+    return new Date(row.lastReadAt);
   }
 
   async getFor(rfpId: string, workspaceId: string, userId: string, tx?: Tx): Promise<RfpTeamMessageRead | undefined> {

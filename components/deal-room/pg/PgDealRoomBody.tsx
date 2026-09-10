@@ -32,7 +32,7 @@ import type { PgRfpDetailData } from '@/lib/server/rfp-detail-loader';
 
 export function PgDealRoomBody({ data }: { data: PgRfpDetailData }) {
   const {
-    rfp, myBid, buyerName, quoteTemplates, pendingRequote, awardedToMe, buyerContact, signing,
+    rfp, myBid, buyer, quoteTemplates, pendingRequote, awardedToMe, buyerContact, signing,
     linkedSigningTemplate, signingTemplates,
   } = data;
   const router = useRouter();
@@ -56,7 +56,7 @@ export function PgDealRoomBody({ data }: { data: PgRfpDetailData }) {
     writeContent = (
       <>
         <RequoteBanner message={pendingRequote.message} deadline={pendingRequote.deadline} />
-        <BidWizard rfp={rfp} buyerName={buyerName} templates={quoteTemplates} signingTemplates={signingTemplatesVisible} initialBid={myBid} />
+        <BidWizard rfp={rfp} buyer={buyer} templates={quoteTemplates} signingTemplates={signingTemplatesVisible} initialBid={myBid} />
       </>
     );
   } else if (isAwarded && awardedToMe) {
@@ -99,7 +99,7 @@ export function PgDealRoomBody({ data }: { data: PgRfpDetailData }) {
       </div>
     );
   } else {
-    writeContent = <BidWizard rfp={rfp} buyerName={buyerName} templates={quoteTemplates} signingTemplates={signingTemplatesVisible} />;
+    writeContent = <BidWizard rfp={rfp} buyer={buyer} templates={quoteTemplates} signingTemplates={signingTemplatesVisible} />;
   }
 
   // signing 이 아니라 contractVisible 을 넘긴다 — 위 봉인입찰 방어(미선정 PG 에겐
@@ -118,7 +118,7 @@ export function PgDealRoomBody({ data }: { data: PgRfpDetailData }) {
   const tabs: DealRoomTab[] = [
     ...contractTab.tabs,
     { id: 'write', label: '견적 작성', content: writeContent },
-    { id: 'request', label: '요청 조건', content: <RfpBriefPanel rfp={rfp} buyerName={buyerName} /> },
+    { id: 'request', label: '요청 조건', content: <RfpBriefPanel rfp={rfp} buyer={buyer} /> },
     { id: 'attach', label: '첨부', content: <AttachmentPreviewList files={rfp.rfpFiles} /> },
   ];
 

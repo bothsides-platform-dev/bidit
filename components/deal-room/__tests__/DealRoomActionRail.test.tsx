@@ -87,4 +87,24 @@ describe('DealRoomActionRail', () => {
     );
     expect(screen.getByRole('button', { name: '선정' })).toBeInTheDocument();
   });
+
+  it('종결 작업은 입력 순서와 무관하게 기본 작업 뒤의 별도 키보드 순서에 둔다', () => {
+    render(
+      <DealRoomActionRail
+        actions={[
+          { id: 'cancel', label: '취소', icon, onSelect: vi.fn(), placement: 'bottom' },
+          { id: 'award', label: '선정', icon, onSelect: vi.fn() },
+          { id: 'close', label: '마감', icon, onSelect: vi.fn(), placement: 'bottom' },
+          { id: 'requote', label: '재요청', icon, onSelect: vi.fn() },
+        ]}
+      />,
+    );
+
+    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual([
+      '선정',
+      '재요청',
+      '취소',
+      '마감',
+    ]);
+  });
 });

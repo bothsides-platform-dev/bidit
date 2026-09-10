@@ -46,7 +46,7 @@ beforeEach(() => {
 
 import { MessageComposeSheet } from '../MessageComposeSheet';
 
-const counterparty = { name: '(주)샘플테크', type: 'buyer' as const, workspaceId: 'ws-buyer-1' };
+const counterparty = { name: '(주)샘플테크', type: 'buyer' as const, workspaceId: 'ws-buyer-1', logoUpdatedAt: null };
 const rfpContext = {
   id: '11111111-1111-1111-1111-111111111111',
   title: '온라인몰 결제대행 선정',

@@ -383,7 +383,7 @@ describe('sendChatMessageAction', () => {
     );
   });
 
-  it('multiple messages in the same window create only one in-app notification per recipient', async () => {
+  it('multiple messages in the same window keep one in-app read boundary per message', async () => {
     const { buyerUser, buyerWs, pgUser, pgWs } = await seedPair();
     asBuyer(buyerUser, buyerWs.id);
 
@@ -392,8 +392,8 @@ describe('sendChatMessageAction', () => {
     await sendChatMessageAction({ counterpartyWorkspaceId: pgWs.id, body: 'm3' });
 
     const notifs = await db.select().from(notifications).where(eq(notifications.workspaceId, pgWs.id));
-    expect(notifs).toHaveLength(1);
-    expect(notifs[0].userId).toBe(pgUser.id);
+    expect(notifs).toHaveLength(3);
+    expect(new Set(notifs.map((n) => n.userId))).toEqual(new Set([pgUser.id]));
   });
 
   it('coalesces multiple sends in the same window into one outbox row per recipient', async () => {

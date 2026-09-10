@@ -13,6 +13,29 @@ class ResizeObserverStub {
 vi.stubGlobal('ResizeObserver', ResizeObserverStub);
 if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
 
+// 하단 센티널 가시성 관찰자 — 읽음의 두 번째 게이트를 테스트가 직접 몬다.
+// jsdom 에는 IntersectionObserver 가 없다.
+type IoCb = (entries: { isIntersecting: boolean }[]) => void;
+const intersectionObservers: { fire: (v: boolean) => void }[] = [];
+class IntersectionObserverStub {
+  constructor(cb: IoCb) {
+    intersectionObservers.push({ fire: (v) => cb([{ isIntersecting: v }]) });
+  }
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+vi.stubGlobal('IntersectionObserver', IntersectionObserverStub);
+
+/** 하단 센티널이 화면 밖으로 나갔다(= 사용자가 위로 스크롤했다). */
+function scrollAwayFromBottom(): void {
+  for (const o of intersectionObservers) o.fire(false);
+}
+/** 하단 센티널이 다시 보인다(= 사용자가 아래로 돌아왔다). */
+function scrollBackToBottom(): void {
+  for (const o of intersectionObservers) o.fire(true);
+}
+
 // sendChatMessageAction is a 'use server' action — it imports centrifugo/db
 // (server-only) and would break jsdom. Mock it so the composer can call it.
 const sendChatMessageAction = vi.fn();
@@ -30,6 +53,12 @@ vi.mock('@/lib/server/actions/chat/listConversationAttachments', () => ({
 const markConversationReadAction = vi.fn();
 vi.mock('@/lib/server/actions/chat/markConversationReadAction', () => ({
   markConversationReadAction: (...args: unknown[]) => markConversationReadAction(...args),
+}));
+
+// 알림 스토어의 로컬 배지 정리 — 서버 액션 체인을 끌고 오므로 mock 한다.
+const markThreadReadLocal = vi.fn();
+vi.mock('@/lib/hooks/useNotifications', () => ({
+  markThreadReadLocal: (...args: unknown[]) => markThreadReadLocal(...args),
 }));
 
 // useChatChannel pulls in the real `centrifuge` SDK — mock it so jsdom stays
@@ -99,49 +128,6 @@ vi.mock('@/lib/toast', () => ({
   toast: (...args: unknown[]) => toast(...args),
 }));
 
-// 전송 morph 는 jsdom 에서 두 겹으로 막혀 있다: matchMedia 부재로 useReducedMotion 이
-// true 가 되고, getBoundingClientRect 가 전부 0 이라 shouldMorph 의 폭 게이트에 걸린다.
-// 기본값은 현행(true)을 유지해 기존 테스트를 건드리지 않고, morph 테스트만 뒤집는다.
-// motion.div 도 스텁으로 바꾼다 — 실제 애니메이션은 jsdom 에서 첫 프레임에 완료를
-// 통보해 클론이 즉시 걷히므로, 클론 존속을 관찰할 수 없다. 스텁은 완료를 통보하지
-// 않아 "클론이 언제 걷히는가"가 오직 훅의 정리 경로로만 결정된다(=이 테스트의 대상).
-// ThreadView 트리에서 motion 을 쓰는 컴포넌트는 MorphFlightLayer 하나뿐이다.
-let reduceMotion = true;
-const MOTION_ONLY_PROPS = new Set(['initial', 'animate', 'exit', 'transition', 'onAnimationComplete']);
-vi.mock('motion/react', async (importOriginal) => {
-  const mod = await importOriginal<typeof import('motion/react')>();
-  const { createElement } = await import('react');
-  const motion = new Proxy(
-    {},
-    {
-      get: (_target, tag: string) =>
-        function MotionStub(props: Record<string, unknown>) {
-          // 애니메이션 전용 prop 은 떼고 나머지만 DOM 으로 넘긴다(React 경고 방지).
-          const rest = Object.fromEntries(
-            Object.entries(props).filter(([k]) => !MOTION_ONLY_PROPS.has(k)),
-          );
-          return createElement(tag, rest);
-        },
-    },
-  );
-  return { ...mod, motion, useReducedMotion: () => reduceMotion };
-});
-
-// 레이아웃이 없는 jsdom 에서 morph 를 발동시키기 위한 rect 스텁. 클론이 뜨는 데 필요한
-// 건 "0 이 아닌 폭"뿐이라 모든 엘리먼트에 같은 값을 물린다. 반환된 함수로 원복한다.
-function stubLayoutRects(): () => void {
-  const original = Element.prototype.getBoundingClientRect;
-  Element.prototype.getBoundingClientRect = function (): DOMRect {
-    return {
-      left: 10, top: 500, width: 300, height: 32,
-      right: 310, bottom: 532, x: 10, y: 500, toJSON: () => ({}),
-    } as DOMRect;
-  };
-  return () => {
-    Element.prototype.getBoundingClientRect = original;
-  };
-}
-
 vi.mock('../ContextPanel', () => ({
   ContextPanel: ({ rfpContext }: { rfpContext?: { title?: string } }) => (
     <div data-testid="context-panel">{rfpContext?.title ?? ''}</div>
@@ -153,13 +139,17 @@ beforeEach(() => {
   sendChatMessageAction.mockReset();
   sendChatMessageAction.mockResolvedValue({ ok: true, conversationId: 'conv-1', messageId: 'm-new' });
   markConversationReadAction.mockReset();
-  markConversationReadAction.mockResolvedValue({ ok: true });
+  markConversationReadAction.mockResolvedValue({
+    ok: true,
+    readAt: '2026-05-27T05:00:00.000Z',
+  });
   sendTyping.mockReset();
   uploadAttachment.mockReset();
   toast.mockReset();
   // 초안 보존이 localStorage 를 쓰므로 테스트 간 격리를 위해 매번 비운다.
   window.localStorage.clear();
   channelOptions = {};
+  intersectionObservers.length = 0;
   readReceiptInputs.length = 0;
   channelResult = { typingUserIds: [], sendTyping, connected: null };
   workspacePresenceResult = { online: false, activity: 'offline' };
@@ -168,6 +158,15 @@ beforeEach(() => {
 import { ThreadView } from '../ThreadView';
 import { formatTime } from '../format';
 import type { ThreadMessage } from '../types';
+import { MARK_READ_DEBOUNCE_MS } from '@/lib/hooks/useMarkReadWhileVisible';
+
+/** 도착 후 읽음은 트레일링 디바운스다 — "읽음 처리 안 함"을 단언하기 전에 그 창을 지나 보내야 한다.
+ *  기다리지 않고 단언하면 게이트가 없어도 카운트가 아직 그대로라 테스트가 아무것도 지키지 못한다. */
+async function flushReadDebounce() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, MARK_READ_DEBOUNCE_MS + 50));
+  });
+}
 
 const counterparty = { workspaceId: 'pg-1', name: 'OO페이', type: 'pg' as const, logoUpdatedAt: null };
 const viewer = { userId: 'u-self', name: '나', avatarUpdatedAt: null };
@@ -229,9 +228,191 @@ describe('ThreadView', () => {
   it('마운트 시 markConversationReadAction 을 conversationId 로 1회 호출한다(읽음 처리)', async () => {
     render(base());
     await waitFor(() => {
-      expect(markConversationReadAction).toHaveBeenCalledWith({ conversationId: 'conv-1' });
+      expect(markConversationReadAction).toHaveBeenCalledWith({
+        conversationId: 'conv-1',
+        throughMessageId: 'm2',
+      });
     });
     expect(markConversationReadAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('열려 있는 동안 상대 메시지가 오면 다시 읽음 처리한다', async () => {
+    render(base());
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'live-read-1',
+        body: '읽음 갱신 트리거',
+        authorWsId: 'pg-1', // counterparty
+        rfpId: null,
+        createdAt: '2026-05-27T06:00:00.000Z',
+      });
+    });
+
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(2));
+    expect(markConversationReadAction).toHaveBeenLastCalledWith({
+      conversationId: 'conv-1',
+      throughMessageId: 'live-read-1',
+    });
+  });
+
+  it('읽음 서버 처리가 실패하면 알림 배지를 로컬에서 먼저 내리지 않는다', async () => {
+    markConversationReadAction.mockResolvedValue({ ok: false, error: 'FORBIDDEN' });
+    markThreadReadLocal.mockClear();
+
+    render(base());
+
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(1));
+    expect(markThreadReadLocal).not.toHaveBeenCalled();
+  });
+
+  it('위로 스크롤해 최신 메시지가 화면에 없으면 읽음 처리하지 않는다', async () => {
+    // 긴 대화를 위로 올려 과거 글을 읽는 중에 도착한 메시지는 눈에 보이지 않는다.
+    // 그걸 읽음으로 치면 상대에게 거짓 읽음 영수증이 나간다.
+    render(base());
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(1));
+
+    act(() => scrollAwayFromBottom());
+    act(() => {
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'live-offscreen',
+        body: '화면 밖 메시지',
+        authorWsId: 'pg-1',
+        rfpId: null,
+        createdAt: '2026-05-27T06:03:00.000Z',
+      });
+    });
+
+    // 도착 자체는 렌더된다(위에 pill 이 뜬다) — 읽음만 미룬다.
+    expect(await screen.findByText('화면 밖 메시지')).toBeInTheDocument();
+    await flushReadDebounce();
+    expect(markConversationReadAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('아래로 다시 내려와 최신 메시지가 보이면 그때 읽음 처리한다', async () => {
+    render(base());
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(1));
+
+    act(() => scrollAwayFromBottom());
+    act(() => {
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'live-catchup',
+        body: '나중에 볼 메시지',
+        authorWsId: 'pg-1',
+        rfpId: null,
+        createdAt: '2026-05-27T06:04:00.000Z',
+      });
+    });
+    await flushReadDebounce();
+    expect(markConversationReadAction).toHaveBeenCalledTimes(1);
+
+    act(() => scrollBackToBottom());
+
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(2));
+    expect(markConversationReadAction).toHaveBeenLastCalledWith({
+      conversationId: 'conv-1',
+      throughMessageId: 'live-catchup',
+    });
+  });
+
+  it('탭이 숨겨져 있으면 도착한 메시지로 읽음 처리하지 않는다(거짓 읽음 영수증 방지)', async () => {
+    render(base());
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(1));
+
+    const original = Object.getOwnPropertyDescriptor(Document.prototype, 'visibilityState');
+    Object.defineProperty(document, 'visibilityState', {
+      configurable: true,
+      get: () => 'hidden',
+    });
+    try {
+      act(() => {
+        channelOptions.onMessage?.({
+          type: 'message',
+          id: 'live-read-2',
+          body: '숨은 탭 메시지',
+          authorWsId: 'pg-1',
+          rfpId: null,
+          createdAt: '2026-05-27T06:01:00.000Z',
+        });
+      });
+      // 도착 자체는 렌더된다 — 읽음만 미룬다.
+      expect(await screen.findByText('숨은 탭 메시지')).toBeInTheDocument();
+      await flushReadDebounce();
+      expect(markConversationReadAction).toHaveBeenCalledTimes(1);
+    } finally {
+      if (original) Object.defineProperty(document, 'visibilityState', original);
+      else
+        Object.defineProperty(document, 'visibilityState', {
+          configurable: true,
+          get: () => 'visible',
+        });
+    }
+  });
+
+  it('내가 보낸 메시지 echo 로는 읽음 처리하지 않는다', async () => {
+    render(base());
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(1));
+
+    act(() => {
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'live-self-1',
+        body: '내 메시지 echo',
+        authorWsId: 'buyer-1', // 내 워크스페이스 → 'self'
+        rfpId: null,
+        createdAt: '2026-05-27T06:02:00.000Z',
+      });
+    });
+
+    expect(await screen.findByText('내 메시지 echo')).toBeInTheDocument();
+    await flushReadDebounce();
+    expect(markConversationReadAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('늦게 도착한 예전 메시지가 최신 읽음 경계를 뒤로 돌리지 않는다', async () => {
+    render(base());
+    await waitFor(() => expect(markConversationReadAction).toHaveBeenCalledTimes(1));
+    markConversationReadAction.mockClear();
+
+    act(() => {
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'live-newer',
+        body: '최신 메시지',
+        authorWsId: 'pg-1',
+        rfpId: null,
+        createdAt: '2026-05-27T06:02:00.000Z',
+      });
+      channelOptions.onMessage?.({
+        type: 'message',
+        id: 'live-older',
+        body: '늦게 도착한 예전 메시지',
+        authorWsId: 'pg-1',
+        rfpId: null,
+        createdAt: '2026-05-27T06:01:00.000Z',
+      });
+    });
+
+    await flushReadDebounce();
+    expect(markConversationReadAction).toHaveBeenCalledWith({
+      conversationId: 'conv-1',
+      throughMessageId: 'live-newer',
+    });
+  });
+
+  it('읽음 처리와 함께 그 대화의 알림 배지를 로컬에서도 내린다', async () => {
+    render(base());
+
+    await waitFor(() =>
+      expect(markThreadReadLocal).toHaveBeenCalledWith(
+        '/messages?c=conv-1',
+        '2026-05-27T05:00:00.000Z',
+      ),
+    );
   });
 
   it('상대 읽음 영수증 projection을 Conversation read-state hook에 위임한다', () => {
@@ -956,6 +1137,24 @@ describe('ThreadView 빈 스레드', () => {
 });
 
 describe('ThreadView 전송 중 상태', () => {
+  it('전송 중 말풍선을 morph 오버레이 없이 목록에 직접 표시한다', async () => {
+    const user = userEvent.setup();
+    let resolveSend!: (v: unknown) => void;
+    sendChatMessageAction.mockReturnValue(new Promise((res) => { resolveSend = res; }));
+    render(base());
+
+    await user.type(screen.getByPlaceholderText('메시지를 입력하세요…'), '즉시 표시 메시지');
+    await user.click(screen.getByRole('button', { name: '보내기' }));
+
+    const bubble = await screen.findByText('즉시 표시 메시지');
+    expect(bubble.closest('[data-message-row]')).toHaveAttribute('data-sender', 'self');
+    expect(document.querySelector('[data-morph-bounds]')).toBeNull();
+
+    await act(async () => {
+      resolveSend({ ok: true, conversationId: 'conv-1', messageId: 'm-new' });
+    });
+  });
+
   it('전송 중에는 "전송 중" 표식을 보이고, 성공하면 일반 상태로 바뀐다', async () => {
     const user = userEvent.setup();
     let resolveSend!: (v: unknown) => void;
@@ -1383,7 +1582,9 @@ describe('variant=tabs', () => {
 
   it('RFP 탭 클릭 시 ContextPanel을 렌더하고 컴포저를 숨긴다', async () => {
     const user = userEvent.setup();
+    channelResult = { typingUserIds: [], sendTyping, connected: true };
     render(<ThreadView {...baseProps} />);
+
     await user.click(screen.getByRole('tab', { name: 'RFP' }));
     expect(screen.getByTestId('context-panel')).toBeInTheDocument();
     const composer = screen.queryByPlaceholderText('메시지를 입력하세요…')
@@ -1422,66 +1623,5 @@ describe('variant=page (갤러리 버튼 없음)', () => {
       />
     );
     expect(screen.queryByText(/파일 \d/)).not.toBeInTheDocument();
-  });
-});
-
-// 전송 morph 클론은 최상위 z 로 body 에 portal 되므로, 두 가지를 화면 계약으로 고정한다:
-// ① 클론이 채팅 패널 경계 밖(딜룸 모달 헤더 등)으로 새지 않을 것,
-// ② 말풍선 목록이 통째로 갈릴 때 클론이 남아 실 말풍선과 겹치지 않을 것.
-describe('ThreadView — 전송 morph', () => {
-  const clones = (): NodeListOf<Element> => document.querySelectorAll('[data-morph-clip]');
-
-  it('채팅 패널에 morph 경계를 달아 클론이 목록·입력창 밖으로 새지 않게 한다', () => {
-    render(base());
-
-    const bounds = document.querySelector('[data-morph-bounds]');
-    expect(bounds).not.toBeNull();
-    // 경계는 morph 의 두 끝점(도착=말풍선 목록, 출발=입력창)을 모두 품어야 한다.
-    expect(bounds).toContainElement(document.querySelector('[data-message-list]'));
-    expect(bounds).toContainElement(screen.getByPlaceholderText('메시지를 입력하세요…'));
-  });
-
-  // MessageInbox 는 같은 conversationId 로 messages prop 을 교체한다(remount 아님).
-  // 교체된 서버 행에는 localKey 가 없어 morph 타깃 키가 끊기므로, 클론을 거두지 않으면
-  // 실 말풍선과 클론이 최대 0.34s 동안 함께 보인다.
-  it('messages prop 이 갈리면 진행 중인 클론을 거둔다(이중 말풍선 방지)', async () => {
-    reduceMotion = false;
-    const restoreRects = stubLayoutRects();
-    try {
-      const user = userEvent.setup();
-      const { rerender } = render(base());
-
-      await user.type(screen.getByPlaceholderText('메시지를 입력하세요…'), '보내는 중인 말');
-      await user.click(screen.getByRole('button', { name: '보내기' }));
-      await waitFor(() => expect(clones()).toHaveLength(1));
-
-      // 로더가 같은 대화의 새 배열을 내려준다 — 낙관적 행이 localKey 없는 서버 행으로 교체된다.
-      const resynced: ThreadMessage[] = [
-        ...messages,
-        {
-          id: 'm-new',
-          authorUserId: 'u-self',
-          authorName: '나',
-          authorEmail: 'me@buyer.com',
-          authorAvatarUpdatedAt: null,
-          sender: 'self',
-          body: '보내는 중인 말',
-          rfpId: null,
-          createdAt: '2026-05-27T06:00:00.000Z',
-          readByCounterparty: false,
-          attachments: [],
-        },
-      ];
-      act(() => {
-        rerender(base({ messages: resynced }));
-      });
-
-      expect(clones()).toHaveLength(0);
-      // 실 말풍선은 한 번만 — 클론과 겹치지 않는다.
-      expect(screen.getAllByText('보내는 중인 말')).toHaveLength(1);
-    } finally {
-      restoreRects();
-      reduceMotion = true;
-    }
   });
 });

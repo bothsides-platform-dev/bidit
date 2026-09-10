@@ -110,6 +110,23 @@ export class DrizzleRfpTeamMessageRepository implements RfpTeamMessageRepo {
     return row ?? undefined;
   }
 
+  async findReadBoundary(
+    messageId: string,
+    tx?: Tx,
+  ): Promise<{ rfpId: string; workspaceId: string; createdAt: Date } | undefined> {
+    const db = this.h(tx);
+    const [row] = await db
+      .select({
+        rfpId: rfpTeamMessages.rfpId,
+        workspaceId: rfpTeamMessages.workspaceId,
+        createdAt: rfpTeamMessages.createdAt,
+      })
+      .from(rfpTeamMessages)
+      .where(eq(rfpTeamMessages.id, messageId))
+      .limit(1);
+    return row ?? undefined;
+  }
+
   async listThreadsForWorkspace(workspaceId: string, tx?: Tx): Promise<TeamThreadSummary[]> {
     const db = this.h(tx);
     // rfp별 마지막 메시지: DISTINCT ON (rfp_id) + ORDER BY rfp_id, created_at DESC.

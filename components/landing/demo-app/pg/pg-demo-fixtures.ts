@@ -4,6 +4,7 @@ import type { Dashboard } from '@/lib/server/dashboard/buildDashboard';
 import type { InboxListItem } from '@/lib/server/actions/chat/inboxLoader';
 import type { InboxRow } from '@/components/inbox/InboxList';
 import type { RFP } from '@/lib/types/rfp';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
 import { demoRfps } from '../demo-app-fixtures';
 
 const now = Date.now();
@@ -12,6 +13,13 @@ const iso = (offsetDays: number) => new Date(now + offsetDays * DAY).toISOString
 
 export const demoPgWorkspaceName = '파트너 PG사';
 export const demoPgBuyerName = '브링콘파트너스';
+/** 데모 구매사 신원 — RfpBriefPanel·BidWizard 가 통째로 받는다(데모는 로고 없음). */
+export const demoPgBuyer: WorkspaceDisplay = {
+  id: 'demo-buyer-ws',
+  name: demoPgBuyerName,
+  type: 'buyer',
+  logoUpdatedAt: null,
+};
 
 // ── 받은 견적 요청 목록(InboxList rows) ────────────────────────────
 export const demoPgInboxRows: InboxRow[] = [

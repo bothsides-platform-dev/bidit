@@ -17,6 +17,7 @@ import {
   getWorkspaceRepo,
   getRfpRequoteRequestRepo,
 } from './repositories/factory';
+import type { WorkspaceDisplay } from '@/lib/types/workspace';
 import { toQuoteTemplateOption } from './quote-template-option';
 import type { QuoteTemplateOption } from '@/lib/types/bid';
 import { pgDealRoomShowsBidWizard } from '@/lib/rfp/pg-bid-wizard-visibility';
@@ -47,12 +48,12 @@ export type BuyerRfpDetailData = {
   bids: Bid[];
   rfpFiles: Attachment[];
   companyName: string;
-  inviteList: { wsId: string; wsName: string; status: InvitationStatus }[];
-  pgWsNameMap: Record<string, string>;
-  /** pgWsId → 워크스페이스 로고 갱신 타임스탬프(ISO 8601). 로고 없으면 null. */
-  pgWsLogoUpdatedAtMap: Record<string, string | null>;
+  /** 초대(허용) PG 목록 — 워크스페이스 신원을 통째로 담는다(이름만 담으면 로고가 샌다). */
+  inviteList: { ws: WorkspaceDisplay; status: InvitationStatus }[];
+  /** pgWsId → 워크스페이스 신원(상호명·유형·로고 버전). 이름 맵과 로고 맵을 나누지 않는다. */
+  pgWsById: Record<string, WorkspaceDisplay>;
   /** 오픈 게시판에서 들어온 미결(pending) 참여 요청 — 구매사 검토용. */
-  pendingRequests: { id: string; pgWsId: string; pgWsName: string; message: string; createdAt: string }[];
+  pendingRequests: { id: string; pgWs: WorkspaceDisplay; message: string; createdAt: string }[];
   /** pgWsId → 최신 재요청 요약(없으면 키 없음). */
   requoteByPg: Record<string, { status: RfpRequoteRequestStatus; round: number; deadline: string }>;
   /** pgWsId → 직전 라운드 견적(델타 표시용; 없으면 키 없음). */
@@ -70,10 +71,8 @@ export type PgRfpDetailData = {
   rfp: RFP;
   /** 본인 워크스페이스가 이미 제출한 입찰 중 최신 라운드(있으면). */
   myBid: Bid | undefined;
-  /** 구매사 워크스페이스 상호명 (workspaces.name). */
-  buyerName: string;
-  /** 구매사 워크스페이스 로고 갱신 타임스탬프 (ISO 8601). 로고 없으면 null. */
-  buyerLogoUpdatedAt: string | null;
+  /** 구매사 워크스페이스 신원(상호명·로고 버전) — 아바타를 그리는 화면이 통째로 받는다. */
+  buyer: WorkspaceDisplay;
   /** 본 PG 워크스페이스 공유 견적 템플릿 — BidForm 불러오기용(요율표). */
   quoteTemplates: QuoteTemplateOption[];
   /** 진행 중인 재요청(있으면 PG가 다시 제출 가능). */
@@ -104,6 +103,14 @@ export type PgRfpDetailData = {
    */
   linkedSigningTemplate: SigningTemplateOption | null;
 };
+
+/**
+ * 사라진 워크스페이스 행의 자리표시자 — 이름 대신 id 를 노출하던 기존 폴백(`?? wsId`)을
+ * 신원 객체로 옮긴 것. 로고는 없으므로 이니셜로 떨어진다.
+ */
+function unknownPgWorkspace(wsId: string): WorkspaceDisplay {
+  return { id: wsId, name: wsId, type: 'pg', logoUpdatedAt: null };
+}
 
 /**
  * 딜룸 전자서명 상태 로드 — 활성 계약(없으면 최신 라운드) + 참여자. 없으면 null.
@@ -267,16 +274,13 @@ export async function loadBuyerRfpDetail(args: {
     new Set([...rfp.allowedPgWorkspaceIds, ...bids.map((b) => b.pgWsId)]),
   );
   const allPgWorkspaces = await wsRepo.findDisplayInfoByIds(allPgWsIds);
-  const pgWsNameMap: Record<string, string> = {};
-  const pgWsLogoUpdatedAtMap: Record<string, string | null> = {};
+  const pgWsById: Record<string, WorkspaceDisplay> = {};
   allPgWorkspaces.forEach((w) => {
-    pgWsNameMap[w.id] = w.name;
-    pgWsLogoUpdatedAtMap[w.id] = w.logoUpdatedAt ?? null;
+    pgWsById[w.id] = w;
   });
 
   const inviteList = rfp.allowedPgWorkspaceIds.map((wsId) => ({
-    wsId,
-    wsName: pgWsNameMap[wsId] ?? wsId,
+    ws: pgWsById[wsId] ?? unknownPgWorkspace(wsId),
     status: invByWsId.get(wsId) ?? ('draft' as InvitationStatus),
   }));
 
@@ -285,14 +289,10 @@ export async function loadBuyerRfpDetail(args: {
   const pendingReqRows = allRequests.filter((r) => r.status === 'pending');
   const reqWsIds = Array.from(new Set(pendingReqRows.map((r) => r.pgWsId)));
   const reqWorkspaces = await wsRepo.findDisplayInfoByIds(reqWsIds);
-  const reqNameMap: Record<string, string> = {};
-  reqWorkspaces.forEach((w) => {
-    reqNameMap[w.id] = w.name;
-  });
+  const reqWsById = new Map(reqWorkspaces.map((w) => [w.id, w]));
   const pendingRequests = pendingReqRows.map((r) => ({
     id: r.id,
-    pgWsId: r.pgWsId,
-    pgWsName: reqNameMap[r.pgWsId] ?? r.pgWsId,
+    pgWs: reqWsById.get(r.pgWsId) ?? unknownPgWorkspace(r.pgWsId),
     message: r.message,
     createdAt: r.createdAt,
   }));
@@ -304,7 +304,7 @@ export async function loadBuyerRfpDetail(args: {
     if (awardedBid) {
       const contact = await (await getUserRepo()).findContactById(awardedBid.submittedBy);
       if (contact) {
-        awardedPgContact = { workspaceName: pgWsNameMap[awardedBid.pgWsId] ?? '—', ...contact };
+        awardedPgContact = { workspaceName: pgWsById[awardedBid.pgWsId]?.name ?? '—', ...contact };
       }
     }
   }
@@ -324,8 +324,7 @@ export async function loadBuyerRfpDetail(args: {
     rfpFiles,
     companyName,
     inviteList,
-    pgWsNameMap,
-    pgWsLogoUpdatedAtMap,
+    pgWsById,
     pendingRequests,
     requoteByPg,
     priorBidByPg,
@@ -397,17 +396,21 @@ export async function loadPgRfpDetail(args: {
     ? { message: pendingReq.message, deadline: pendingReq.deadline, round: pendingReq.round }
     : null;
 
-  // 구매사 상호명 — RfpBriefPanel 에 표시.
+  // 구매사 신원(상호명 + 로고 버전) — RfpBriefPanel·BidContextStrip 이 아바타까지 그린다.
   const wsRepo = await getWorkspaceRepo();
-  const buyerWs = await wsRepo.findById(rfp.buyerWsId);
-  const buyerName = buyerWs?.name ?? '—';
-  const buyerLogoUpdatedAt = buyerWs?.logoUpdatedAt ?? null;
+  const buyerWs = await wsRepo.getDisplayInfo(rfp.buyerWsId);
+  const buyer: WorkspaceDisplay = buyerWs ?? {
+    id: rfp.buyerWsId,
+    name: '—',
+    type: 'buyer',
+    logoUpdatedAt: null,
+  };
 
   // awardedToMe 일 때만 구매사 담당자 연락처 부착. 미선정/선정 전은 조회조차 안 함(누출 방지).
   let buyerContact: DealContact | null = null;
   if (awardedToMe && createdByBeforeStrip) {
     const contact = await (await getUserRepo()).findContactById(createdByBeforeStrip);
-    if (contact) buyerContact = { workspaceName: buyerName, ...contact };
+    if (contact) buyerContact = { workspaceName: buyer.name, ...contact };
   }
 
   // 본 PG 워크스페이스 공유 견적 템플릿(요율표) — 폼 채우기용 직렬화 부분집합.
@@ -452,8 +455,7 @@ export async function loadPgRfpDetail(args: {
     rfp,
     myBid,
     pendingRequote,
-    buyerName,
-    buyerLogoUpdatedAt,
+    buyer,
     quoteTemplates,
     awardedToMe,
     buyerContact,
